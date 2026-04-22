@@ -122,6 +122,7 @@ pnpm dev
 ```
 
 访问 http://localhost:3000，默认管理员账号：
+
 - 邮箱：`admin@shop.com`
 - 密码：`admin123`
 
