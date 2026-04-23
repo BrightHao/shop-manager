@@ -1,194 +1,253 @@
-# Shop Manager — 店铺管理系统
+# CloudBase React 模板
 
-> 现代化的一体化店铺管理解决方案，覆盖商品、订单、结算、账单全链路业务流程。
+基于 React、Vite 和腾讯云开发（CloudBase）的现代化 Web 应用模板，为开发者提供了快速构建全栈应用的能力。
 
-![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791?logo=postgresql)
-![Drizzle ORM](https://img.shields.io/badge/Drizzle_ORM-0.45-cyan)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-38bdf8?logo=tailwindcss)
-![E2E Tests](https://img.shields.io/badge/E2E_Playwright-14%20passing-green)
 
----
+[![Powered by CloudBase](https://7463-tcb-advanced-a656fc-1257967285.tcb.qcloud.la/mcp/powered-by-cloudbase-badge.svg)](https://github.com/TencentCloudBase/CloudBase-AI-ToolKit)  
 
-## 功能概览
+> 本项目基于 [**CloudBase AI ToolKit**](https://github.com/TencentCloudBase/CloudBase-AI-ToolKit) 开发，通过AI提示词和 MCP 协议+云开发，让开发更智能、更高效，支持AI生成全栈代码、一键部署至腾讯云开发（免服务器）、智能日志修复。
 
-### 商品管理
-- 商品信息的增删改查（名称、SKU、单位、单价、库存）
-- 实时库存监控与低库存预警
-- 入库、出库、手动调整全链路记录
+## 项目特点
 
-### 订单管理
-- **创建订单** — 多商品选择、实时价格计算、库存自动扣减
-- **编辑订单** — 增量式库存调整（精确计算增减差异）
-- **取消订单** — 自动恢复库存、记录操作流水
-- **结算管理** — 支持全额/分次结算，自动计算未结算余额
-- 多维筛选（日期范围、结算状态、购买人搜索）
+- 🚀 基于 Vite 构建，提供极速的开发体验
+- ⚛️ 使用 React 18 和 React Router 6 构建现代化 UI
+- 🎨 集成 Tailwind CSS 和 DaisyUI 组件库，快速构建漂亮的界面
+- 🔄 使用 Framer Motion 实现流畅的动画效果
+- 🎁 深度集成腾讯云开发 CloudBase，提供一站式后端云服务
 
-### 账单汇总
-- 灵活周期统计：今日 / 本周 / 本月 / 本年 / 自定义
-- KPI 指标：总营收、订单数、平均客单价
-- 结算状态分布与每日销售趋势图
-- 热销商品 TOP 10、大额订单 TOP 10
-- 库存变动汇总表
-- 一键导出 CSV / Excel（兼容中文）
+## 项目架构
 
-### 数据仪表盘
-- 今日订单数 / 收入 / 本月累计
-- 库存预警卡片（库存 <= 10 的商品自动提醒）
-- 最近 5 笔订单快速预览
+### 前端架构
 
-### 权限管理
-- 多角色：管理员（admin）/ 操作员（operator）
-- 基于 JWT 的会话认证
-- 管理员专属用户管理面板（创建、角色变更、状态控制）
-- 所有用户均可修改密码
+- **框架**：React 18
+- **构建工具**：Vite
+- **路由**：React Router 6（使用 HashRouter）
+- **样式**：Tailwind CSS + DaisyUI
+- **动画**：Framer Motion
 
----
+### 云开发资源
 
-## 技术栈
+本项目使用了以下腾讯云开发（CloudBase）资源：
 
-| 层级 | 技术 | 版本 |
-|------|------|------|
-| **框架** | Next.js (App Router) | 15.x |
-| **语言** | TypeScript | 5.x |
-| **样式** | Tailwind CSS | 4.x |
-| **组件** | shadcn/ui | 最新 |
-| **数据表格** | TanStack Table | 8.x |
-| **数据库** | PostgreSQL | 16+ |
-| **ORM** | Drizzle ORM | 0.45+ |
-| **认证** | NextAuth.js (Auth.js) | 5.x |
-| **验证** | Zod + React Hook Form | 3.x / 7.x |
-| **导出** | SheetJS (xlsx) | 0.18+ |
-| **E2E 测试** | Playwright | 1.x |
-| **部署** | Vercel + Supabase | — |
+- **身份认证**：用于用户登录和身份验证
+- **云数据库**：可用于存储应用数据
+- **云函数**：可用于实现业务逻辑
+- **云存储**：可用于存储文件
+- **静态网站托管**：用于部署前端应用
 
----
+## 开始使用
 
-## 安全设计
+### 前提条件
 
-库存安全是系统的核心关注点，采用五层防护机制：
+- 安装 Node.js (版本 14 或更高)
+- 腾讯云开发账号 (可在[腾讯云开发官网](https://tcb.cloud.tencent.com/)注册)
 
-1. **应用层校验** — 创建/编辑订单前快速检查库存
-2. **悲观行锁** — `SELECT ... FOR UPDATE` 串行化并发写入
-3. **原子扣减** — `SET stock = stock - qty` 避免并发竞争
-4. **数据库约束** — `CHECK (stock_quantity >= 0)` 底层兜底
-5. **操作审计** — 每次库存变动都记录流水（before/after）
-
----
-
-## 快速开始
-
-### 环境要求
-
-- Node.js 20+
-- PostgreSQL 16+
-- pnpm 9+
-
-### 安装
+### 安装依赖
 
 ```bash
-# 克隆仓库
-git clone git@github.com:BrightHao/shop-manager.git
-cd shop-manager
-
-# 安装依赖
-pnpm install
-
-# 复制环境配置
-cp .env.example .env.local
-
-# 编辑 .env.local，配置数据库连接
+npm install
 ```
 
-### 数据库初始化
+### 配置云开发环境
+
+1. 打开 `src/utils/cloudbase.js` 文件
+2. 将 `ENV_ID` 变量的值修改为您的云开发环境 ID
+3. 将 `vite.config.js` 中的`https://envId-appid.tcloudbaseapp.com/` 替换为你的云开发环境静态托管默认域名，可以使用 MCP 来查询云开发环境静态托管默认域名
+
+### 本地开发
 
 ```bash
-# 创建数据库
-createdb shop_manage  # 或使用 Supabase
-
-# 执行迁移
-pnpm db:generate
-pnpm db:migrate
-
-# 种子数据（可选）
-pnpm db:seed
+npm run dev
 ```
 
-### 启动
+### 构建生产版本
 
 ```bash
-pnpm dev
+npm run build
 ```
 
-访问 http://localhost:3000，默认管理员账号：
+## 部署指南
 
-- 邮箱：`admin@shop.com`
-- 密码：`admin123`
+### 部署到云开发静态网站托管
 
----
+1. 构建项目：`npm run build`
+2. 登录腾讯云开发控制台
+3. 进入您的环境 -> 静态网站托管
+4. 上传 `dist` 目录中的文件
 
-## 测试
-
-```bash
-# 运行 E2E 测试
-pnpm exec playwright test
-
-# 指定浏览器
-pnpm exec playwright test --project=chromium
-```
-
----
-
-## 项目结构
+## 目录结构
 
 ```
-app/
-  (auth)/                   # 认证相关页面
-  (dashboard)/              # 受保护的后台页面
-    dashboard/              # 数据仪表盘
-    products/               # 商品管理
-    orders/                 # 订单管理
-    bills/                  # 账单汇总
-    settings/               # 系统设置
-  api/                      # REST API 路由
-  error.tsx                 # 全局错误边界
-  global-error.tsx          # 根级错误边界
-  not-found.tsx             # 404 页面
-components/
-  ui/                       # shadcn/ui 基础组件
-  products/                 # 商品相关组件
-  orders/                   # 订单相关组件
-  bills/                    # 账单相关组件
-  dashboard/                # 仪表盘相关组件
-lib/
-  auth.ts                   # 认证配置（JWT 会话）
-  db/
-    schema.ts               # Drizzle 数据库 Schema
-    index.ts                # 数据库客户端
-  validation/               # Zod 校验 Schema
-drizzle/
-  migrations/               # 数据库迁移文件
-  seed.ts                   # 种子数据脚本
-e2e/                        # Playwright E2E 测试
+├── public/               # 静态资源
+├── src/
+│   ├── components/       # 可复用组件
+│   ├── pages/            # 页面组件
+│   ├── utils/            # 工具函数和云开发初始化
+│   ├── App.jsx           # 应用入口
+│   ├── main.jsx          # 渲染入口
+│   └── index.css         # 全局样式
+├── index.html            # HTML 模板
+├── tailwind.config.js    # Tailwind 配置
+├── postcss.config.js     # PostCSS 配置
+├── vite.config.js        # Vite 配置
+└── package.json          # 项目依赖
 ```
 
----
+## 开始开发
 
-## 部署
+首页位于 `src/pages/HomePage.jsx`，是应用的默认入口页面。您可以根据项目需求自定义首页内容。
 
-### Vercel + Supabase
 
-1. 创建 Supabase 项目，获取数据库连接串
-2. 运行 `drizzle-kit push` 或 `migrate` 到生产数据库
-3. 在 Vercel 中导入仓库，配置环境变量：
-   - `DATABASE_URL` — Supabase 连接串
-   - `JWT_SECRET` — 强随机密钥
-   - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — 初始管理员
-4. 部署完成
+## 路由系统说明
 
----
+本项目使用 React Router 6 作为路由系统，并采用 HashRouter 实现路由管理，这样可以更好地兼容静态网站托管服务，避免刷新页面时出现 404 错误。
 
-## License
 
-MIT © BrightHao
+### 当前路由结构
+
+```jsx
+<Router>
+  <div className="flex flex-col min-h-screen">
+    <main className="flex-grow">
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        {/* 可以在这里添加新的路由 */}
+        <Route path="*" element={<HomePage />} />
+      </Routes>
+    </main>
+    <Footer />
+  </div>
+</Router>
+```
+
+### 如何添加新页面和路由
+
+1. 在 `src/pages` 目录下创建新页面组件，例如 `ProductPage.jsx`：
+
+```jsx
+import React from 'react';
+
+const ProductPage = () => {
+  return (
+    <div className="container mx-auto py-8">
+      <h1 className="text-3xl font-bold mb-4">产品页面</h1>
+      <p>这是产品页面的内容</p>
+    </div>
+  );
+};
+
+export default ProductPage;
+```
+
+2. 在 `App.jsx` 中导入新页面并添加路由：
+
+```jsx
+import ProductPage from './pages/ProductPage';
+
+// 在 Routes 中添加新路由
+<Routes>
+  <Route path="/" element={<HomePage />} />
+  <Route path="/products" element={<ProductPage />} />
+  <Route path="*" element={<HomePage />} />
+</Routes>
+```
+
+3. 使用 Link 组件在页面中添加导航链接：
+
+```jsx
+import { Link } from 'react-router-dom';
+
+// 在页面中添加链接
+<Link to="/products" className="btn btn-primary">前往产品页面</Link>
+```
+
+### 使用路由参数
+
+对于需要动态参数的路由，可以使用参数路径：
+
+```jsx
+// 在 App.jsx 中定义带参数的路由
+<Route path="/product/:id" element={<ProductDetailPage />} />
+
+// 在 ProductDetailPage.jsx 中获取参数
+import { useParams } from 'react-router-dom';
+
+const ProductDetailPage = () => {
+  const { id } = useParams();
+  
+  return (
+    <div className="container mx-auto py-8">
+      <h1 className="text-3xl font-bold mb-4">产品详情</h1>
+      <p>产品ID: {id}</p>
+    </div>
+  );
+};
+```
+
+### 路由导航
+
+除了使用 `<Link>` 组件，还可以使用编程式导航：
+
+```jsx
+import { useNavigate } from 'react-router-dom';
+
+const ComponentWithNavigation = () => {
+  const navigate = useNavigate();
+  
+  const handleClick = () => {
+    navigate('/products');
+    // 或者带参数: navigate('/product/123');
+    // 或者返回上一页: navigate(-1);
+  };
+  
+  return (
+    <button onClick={handleClick} className="btn btn-primary">
+      前往产品页面
+    </button>
+  );
+};
+```
+
+
+
+## 云开发功能说明
+
+### 初始化云开发
+
+本模板在 `src/utils/cloudbase.js` 中集中管理云开发的初始化和匿名登录功能。这个工具文件提供了云开发示例的获取/登录，调用云函数，云存储，云数据库等能力。
+
+### 使用云数据库、云函数、云存储
+
+通过 `src/utils/cloudbase.js` 访问云开发服务：
+
+```jsx
+import { app, checkLogin } from '../utils/cloudbase';
+
+// 数据库操作
+await checkLogin();
+const db = app.database();
+const result = await db.collection('users').get(); // 查询数据
+await db.collection('users').add({ name: 'test' }); // 添加数据
+// 调用云函数
+const funcResult = await app.callFunction({ name: 'getEnvInfo' });
+// 文件上传
+const uploadResult = await app.uploadFile({ cloudPath: 'test.jpg', filePath: file });
+// 数据模型
+const models = app.models;
+```
+
+### 重要说明
+
+1. 在使用前请先在 `src/utils/cloudbase.js` 文件中将 `ENV_ID` 变量的值修改为您的云开发环境 ID。
+2. 本模板默认使用Publishable Key 进行资源访问，这适合快速开发和测试，但在生产环境中可能需要更严格的身份验证。
+3. 所有云开发功能都通过初始化的应用实例直接调用，无需二次封装。
+4. `checkLogin` 方法会检查当前登录状态，如果已登录则返回当前登录状态。
+5. 在使用数据库、云函数、云存储等功能前，请确保在云开发控制台中已创建相应的资源。
+
+## 贡献指南
+
+欢迎贡献代码、报告问题或提出改进建议！
+
+## 许可证
+
+MIT

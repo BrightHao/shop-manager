@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, ilike, and, desc, inArray } from 'drizzle-orm';
+import { eq, like, and, desc, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { orders, orderItems, products, inventoryTransactions } from '@/lib/db/schema';
 import { orderSchema } from '@/lib/validation/order';
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   if (dateFrom) conditions.push(sql`${orders.createdAt} >= ${dateFrom}`);
   if (dateTo) conditions.push(sql`${orders.createdAt} <= ${dateTo}`);
   if (settlementStatus) conditions.push(eq(orders.settlementStatus, settlementStatus));
-  if (buyerSearch) conditions.push(ilike(orders.buyerName, `%${buyerSearch}%`));
+  if (buyerSearch) conditions.push(like(orders.buyerName, `%${buyerSearch}%`));
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const offset = (page - 1) * limit;
@@ -92,15 +92,14 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Generate order number
+      // Generate order number using timestamp-based sequence
       const today = new Date();
       const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
-      const counter = await tx.execute(sql`SELECT NEXTVAL('orders_id_seq')`);
-      const seqNum = String(Number(counter[0].nextval)).padStart(4, '0');
-      const orderNo = `ORD-${dateStr}-${seqNum}`;
+      const timeStr = `${String(today.getHours()).padStart(2, '0')}${String(today.getMinutes()).padStart(2, '0')}${String(today.getSeconds()).padStart(2, '0')}`;
+      const orderNo = `ORD-${dateStr}-${timeStr}`;
 
       // Create order
-      const [order] = await tx
+      const [{ id: insertId }] = await tx
         .insert(orders)
         .values({
           orderNo,
@@ -109,7 +108,13 @@ export async function POST(request: NextRequest) {
           notes: notes || null,
           createdBy: session.id,
         })
-        .returning();
+        .$returningId();
+
+      const [order] = await tx
+        .select()
+        .from(orders)
+        .where(eq(orders.id, insertId))
+        .limit(1);
 
       // Create order items, deduct stock, record transactions
       let totalAmount = 0;

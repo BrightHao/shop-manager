@@ -37,7 +37,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const body = await request.json();
 
-    const result = await db
+    await db
       .update(products)
       .set({
         name: body.name,
@@ -46,17 +46,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         unitPrice: body.unitPrice?.toString(),
         status: body.status,
       })
-      .where(eq(products.id, productId))
-      .returning();
+      .where(eq(products.id, productId));
 
-    if (result.length === 0) {
+    const [result] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, productId))
+      .limit(1);
+
+    if (!result) {
       return NextResponse.json(
         { success: false, error: { message: '商品不存在' } },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ success: true, data: result[0] });
+    return NextResponse.json({ success: true, data: result });
   } catch {
     return NextResponse.json(
       { success: false, error: { message: '服务器内部错误' } },

@@ -1,0 +1,9 @@
+{
+  "name": "shop-api",
+  "version": "1.0.0",
+  "description": "Shop management cloud function API",
+  "main": "index.js",
+  "dependencies": {
+    "mysql2": "^3.22.2"
+  }
+}

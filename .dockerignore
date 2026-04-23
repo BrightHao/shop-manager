@@ -1,4 +1,6 @@
 node_modules
+.next
 .git
-.next/cache
-*.md
+.env*
+shop-manage-web
+cloudbaserc.json

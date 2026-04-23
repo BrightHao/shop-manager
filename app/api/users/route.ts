@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hash(password, 12);
 
-    const [newUser] = await db
+    const [{ id: insertId }] = await db
       .insert(users)
       .values({
         name,
@@ -105,7 +105,13 @@ export async function POST(request: NextRequest) {
         role: role || 'operator',
         phone: phone || null,
       })
-      .returning();
+      .$returningId();
+
+    const [newUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, insertId))
+      .limit(1);
 
     return NextResponse.json({
       success: true,

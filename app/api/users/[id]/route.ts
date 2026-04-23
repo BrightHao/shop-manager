@@ -52,7 +52,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const { name, role, phone, status } = parsed.data;
 
-    const [updated] = await db
+    await db
       .update(users)
       .set({
         ...(name !== undefined && { name }),
@@ -61,8 +61,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         ...(status !== undefined && { status }),
         updatedAt: new Date(),
       })
+      .where(eq(users.id, targetId));
+
+    const [updated] = await db
+      .select()
+      .from(users)
       .where(eq(users.id, targetId))
-      .returning();
+      .limit(1);
 
     return NextResponse.json({
       success: true,

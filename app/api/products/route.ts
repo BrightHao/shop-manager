@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, ilike, and, asc } from 'drizzle-orm';
+import { eq, like, and, asc } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { products } from '@/lib/db/schema';
 import { productSchema } from '@/lib/validation/product';
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
 
   const where = and(
     eq(products.status, status as 'active' | 'archived'),
-    search ? ilike(products.name, `%${search}%`) : undefined,
+    search ? like(products.name, `%${search}%`) : undefined,
   );
 
   const offset = (page - 1) * limit;
@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const result = await db
+    const [{ id: insertId }] = await db
       .insert(products)
       .values({
         name,
@@ -81,9 +81,15 @@ export async function POST(request: NextRequest) {
         stockQuantity: stockQuantity.toString(),
         createdBy: session.id,
       })
-      .returning();
+      .$returningId();
 
-    return NextResponse.json({ success: true, data: result[0] }, { status: 201 });
+    const [newProduct] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, insertId))
+      .limit(1);
+
+    return NextResponse.json({ success: true, data: newProduct }, { status: 201 });
   } catch {
     return NextResponse.json(
       { success: false, error: { message: '服务器内部错误' } },

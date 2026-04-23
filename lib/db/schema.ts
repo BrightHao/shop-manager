@@ -1,21 +1,21 @@
 import {
-  pgTable,
+  mysqlTable,
   serial,
   varchar,
   text,
   timestamp,
-  integer,
+  int,
   decimal,
   uniqueIndex,
   index,
   foreignKey,
-} from 'drizzle-orm/pg-core';
+} from 'drizzle-orm/mysql-core';
 
 // ============================================================
 // Users
 // ============================================================
 
-export const users = pgTable(
+export const users = mysqlTable(
   'users',
   {
     id: serial('id').primaryKey(),
@@ -38,7 +38,7 @@ export type NewUser = typeof users.$inferInsert;
 // Products
 // ============================================================
 
-export const products = pgTable(
+export const products = mysqlTable(
   'products',
   {
     id: serial('id').primaryKey(),
@@ -48,7 +48,7 @@ export const products = pgTable(
     unitPrice: decimal('unit_price', { precision: 12, scale: 2 }).notNull().default('0'),
     stockQuantity: decimal('stock_quantity', { precision: 14, scale: 4 }).notNull().default('0'),
     status: varchar('status', { length: 20 }).notNull().default('active'),
-    createdBy: integer('created_by').references(() => users.id),
+    createdBy: int('created_by').references(() => users.id),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -62,7 +62,7 @@ export type NewProduct = typeof products.$inferInsert;
 // Orders
 // ============================================================
 
-export const orders = pgTable(
+export const orders = mysqlTable(
   'orders',
   {
     id: serial('id').primaryKey(),
@@ -73,7 +73,7 @@ export const orders = pgTable(
     settlementStatus: varchar('settlement_status', { length: 20 }).notNull().default('unsettled'),
     settledAmount: decimal('settled_amount', { precision: 14, scale: 2 }).notNull().default('0'),
     notes: text('notes'),
-    createdBy: integer('created_by').references(() => users.id),
+    createdBy: int('created_by').references(() => users.id),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -91,12 +91,12 @@ export type NewOrder = typeof orders.$inferInsert;
 // Order Items
 // ============================================================
 
-export const orderItems = pgTable('order_items', {
+export const orderItems = mysqlTable('order_items', {
   id: serial('id').primaryKey(),
-  orderId: integer('order_id')
+  orderId: int('order_id')
     .notNull()
     .references(() => orders.id, { onDelete: 'cascade' }),
-  productId: integer('product_id')
+  productId: int('product_id')
     .notNull()
     .references(() => products.id),
   quantity: decimal('quantity', { precision: 14, scale: 4 }).notNull(),
@@ -112,9 +112,9 @@ export type NewOrderItem = typeof orderItems.$inferInsert;
 // Inventory Transactions
 // ============================================================
 
-export const inventoryTransactions = pgTable('inventory_transactions', {
+export const inventoryTransactions = mysqlTable('inventory_transactions', {
   id: serial('id').primaryKey(),
-  productId: integer('product_id')
+  productId: int('product_id')
     .notNull()
     .references(() => products.id),
   transactionType: varchar('transaction_type', { length: 30 }).notNull(),
@@ -122,9 +122,9 @@ export const inventoryTransactions = pgTable('inventory_transactions', {
   quantityBefore: decimal('quantity_before', { precision: 14, scale: 4 }).notNull(),
   quantityAfter: decimal('quantity_after', { precision: 14, scale: 4 }).notNull(),
   referenceType: varchar('reference_type', { length: 30 }).notNull(),
-  referenceId: integer('reference_id'),
+  referenceId: int('reference_id'),
   notes: text('notes'),
-  createdBy: integer('created_by').references(() => users.id),
+  createdBy: int('created_by').references(() => users.id),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 

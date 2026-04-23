@@ -10,6 +10,7 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NODE_ENV=production
+ENV DATABASE_URL=mysql://placeholder:3306/build
 RUN corepack enable && pnpm build
 
 FROM base AS runner

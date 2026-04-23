@@ -93,15 +93,20 @@ async function handleSettlement(orderId: number, amount: number) {
   const newSettlementStatus =
     newSettled >= totalAmount - 0.01 ? 'settled' : newSettled > 0 ? 'partially_settled' : 'unsettled';
 
-  const [updated] = await db
+  await db
     .update(orders)
     .set({
       settledAmount: newSettled.toString(),
       settlementStatus: newSettlementStatus,
       updatedAt: new Date(),
     })
+    .where(eq(orders.id, orderId));
+
+  const [updated] = await db
+    .select()
+    .from(orders)
     .where(eq(orders.id, orderId))
-    .returning();
+    .limit(1);
 
   return NextResponse.json({ success: true, data: updated });
 }
@@ -233,7 +238,7 @@ async function handleOrderEdit(orderId: number, body: unknown, session: { id: nu
       }
 
       // 8. Update order header
-      const [updated] = await tx
+      await tx
         .update(orders)
         .set({
           buyerName: buyerName || null,
@@ -242,8 +247,13 @@ async function handleOrderEdit(orderId: number, body: unknown, session: { id: nu
           totalAmount: totalAmount.toString(),
           updatedAt: new Date(),
         })
+        .where(eq(orders.id, orderId));
+
+      const [updated] = await tx
+        .select()
+        .from(orders)
         .where(eq(orders.id, orderId))
-        .returning();
+        .limit(1);
 
       const updatedItems = await tx
         .select()
