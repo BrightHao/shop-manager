@@ -30,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const init = async () => {
       try {
         const session = await checkLogin();
-        if (session) {
+        if (session && (session as any).isLoggedIn !== false) {
           const uid = (session as any).user?.uid || (session as any).uid || "";
           const uname =
             (session as any).user?.username || (session as any).username || "";
