@@ -356,7 +356,7 @@ function OrderDetail({ id, onClose }: { id: number; onClose: () => void }) {
   useEffect(() => {
     callShopApi("orders.get", { id })
       .then((res) => {
-        if (res.data) setOrder(res.data);
+        if (res) setOrder(res);
       })
       .catch(console.error)
       .finally(() => setLoading(false));

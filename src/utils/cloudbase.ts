@@ -7,7 +7,7 @@ export const ENV_ID = import.meta.env.VITE_ENV_ID || "your-env-id";
 export const isValidEnvId = ENV_ID && ENV_ID !== "your-env-id";
 
 // 客户端Publishable Key, 可前往https://tcb.cloud.tencent.com/dev?envId={env}#/env/apikey获取
-const PUBLISHABLE_KEY =  import.meta.env.VITE_PUBLISHABLE_KEY || "";
+const PUBLISHABLE_KEY = import.meta.env.VITE_PUBLISHABLE_KEY || "";
 
 /**
  * 初始化云开发实例
@@ -16,12 +16,13 @@ const PUBLISHABLE_KEY =  import.meta.env.VITE_PUBLISHABLE_KEY || "";
  * @param {number} config.timeout - 超时时间，默认15000ms
  * @param {number} config.accessKey - 客户端Publishable Key，默认使用PUBLISHABLE_KEY
  */
-export const init = (config: { env?: string; timeout?: number; accessKey?: string; } = {}) => {
+export const init = (
+  config: { env?: string; timeout?: number; accessKey?: string } = {},
+) => {
   const appConfig = {
     env: config.env || ENV_ID,
     timeout: config.timeout || 15000,
     accessKey: config.accessKey || PUBLISHABLE_KEY,
-    auth: { detectSessionInUrl: true },
   };
 
   if (!appConfig.accessKey) {
@@ -65,7 +66,7 @@ interface OfflineLoginState {
  * @returns {Promise} 登录状态
  */
 export const checkLogin = async (): Promise<
-  SignInRes['data']['session'] | OfflineLoginState
+  SignInRes["data"]["session"] | OfflineLoginState
 > => {
   // 检查环境配置
   if (!checkEnvironment()) {
@@ -87,7 +88,7 @@ export const checkLogin = async (): Promise<
     }
   } catch (error) {
     console.warn(error);
-    
+
     let { data } = await auth.getClaims();
 
     if (data.claims?.sub === "anon") {
@@ -97,7 +98,7 @@ export const checkLogin = async (): Promise<
     return {
       isLoggedIn: false,
       user: {
-        uid: data.claims?.sub || '',
+        uid: data.claims?.sub || "",
         isAnonymous: true,
       },
     };
@@ -107,7 +108,10 @@ export const checkLogin = async (): Promise<
 /**
  * 退出登录
  */
-export const logout = async (): Promise<{ success: boolean; message: string }> => {
+export const logout = async (): Promise<{
+  success: boolean;
+  message: string;
+}> => {
   const auth = app.auth;
 
   try {

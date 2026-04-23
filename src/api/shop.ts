@@ -15,7 +15,8 @@ export async function callShopApi(
       name: "shop-api",
       data: { action, data },
     });
-    return result.result;
+    // Unwrap cloud function response: { code, message, data: { data, total } }
+    return result.result?.data ?? result.result;
   } catch (error) {
     console.error(`Shop API call failed [${action}]:`, error);
     throw error;

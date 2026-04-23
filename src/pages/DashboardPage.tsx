@@ -17,7 +17,7 @@ export default function DashboardPage() {
   useEffect(() => {
     callShopApi("dashboard")
       .then((res) => {
-        if (res.data) setData(res.data);
+        if (res) setData(res);
       })
       .catch(console.error)
       .finally(() => setLoading(false));

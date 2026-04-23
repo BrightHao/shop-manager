@@ -30,13 +30,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const init = async () => {
       try {
         const session = await checkLogin();
-        if (session && (session as any).isLoggedIn !== false) {
-          const uid = (session as any).user?.uid || (session as any).uid || "";
+        // Only treat as logged in if we have a real session uid
+        const uid = (session as any).user?.uid || (session as any).uid || "";
+        if (uid && (session as any).isLoggedIn !== false) {
           const uname =
             (session as any).user?.username || (session as any).username || "";
-          if (uid) {
-            setUser({ uid, username: uname });
-          }
+          setUser({ uid, username: uname });
         }
       } catch {
         // not logged in
@@ -65,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    setUser(null);
     await cloudbase.logout();
     setUser(null);
   };
