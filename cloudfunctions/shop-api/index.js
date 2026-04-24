@@ -1,4 +1,8 @@
 const mysql = require('mysql2/promise');
+const tcb = require('@cloudbase/node-sdk');
+
+const app = tcb.init({ env: process.env.TCB_ENV_ID || 'shop-manage-d6gsos8yoe6002412' });
+const auth = app.auth();
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'sh-cynosdbmysql-grp-43hug5h6.sql.tencentcdb.com',
@@ -10,6 +14,40 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
 });
+
+// ============================================================
+// Helper: sync CloudBase Auth user to MySQL users table
+// On first login, creates a MySQL row. Always updates latest info.
+// ============================================================
+
+async function ensureUserInMySQL(tcbUid) {
+  const [{ userInfo }] = await auth.getEndUserInfo(tcbUid);
+  const profile = userInfo || {};
+
+  const [rows] = await pool.query('SELECT id FROM users WHERE tcb_uid = ?', [tcbUid]);
+  if (rows.length > 0) {
+    // Update existing row
+    await pool.query(
+      'UPDATE users SET name = ?, email = ?, phone = ?, updated_at = NOW() WHERE tcb_uid = ?',
+      [profile.name || profile.nickName || profile.username || tcbUid, profile.email || '', profile.phone || '', tcbUid]
+    );
+    return rows[0].id;
+  }
+
+  // Create new row
+  const [result] = await pool.query(
+    'INSERT INTO users (name, email, phone, role, status, tcb_uid) VALUES (?, ?, ?, ?, ?, ?)',
+    [
+      profile.name || profile.nickName || profile.username || tcbUid,
+      profile.email || '',
+      profile.phone || '',
+      'operator',
+      'active',
+      tcbUid,
+    ]
+  );
+  return result.insertId;
+}
 
 // ============================================================
 // Dashboard
@@ -54,14 +92,6 @@ async function getUser(id) {
   return rows[0] || null;
 }
 
-async function createUser({ name, email, passwordHash, role = 'operator', phone = '', status = 'active' }) {
-  const [result] = await pool.query(
-    'INSERT INTO users (name, email, password_hash, role, phone, status) VALUES (?, ?, ?, ?, ?, ?)',
-    [name, email, passwordHash, role, phone, status]
-  );
-  return result.insertId;
-}
-
 async function updateUser(id, { name, email, role, phone, status }) {
   const fields = [];
   const values = [];
@@ -77,7 +107,19 @@ async function updateUser(id, { name, email, role, phone, status }) {
 }
 
 async function deleteUser(id) {
+  const [rows] = await pool.query('SELECT tcb_uid FROM users WHERE id = ?', [id]);
+  if (rows.length > 0 && rows[0].tcb_uid) {
+    // TODO: CloudBase Auth user deletion would go here
+    // For now, just remove from MySQL
+  }
   await pool.query('DELETE FROM users WHERE id = ?', [id]);
+}
+
+// Sync CloudBase Auth user to MySQL
+async function syncUser(tcbUid) {
+  const mysqlId = await ensureUserInMySQL(tcbUid);
+  const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [mysqlId]);
+  return rows[0];
 }
 
 // ============================================================
@@ -110,12 +152,34 @@ async function getProduct(id) {
   return rows[0] || null;
 }
 
-async function createProduct({ name, sku = '', unit = '个', unitPrice = '0', stockQuantity = '0', status = 'active', createdBy = null }) {
-  const [result] = await pool.query(
-    'INSERT INTO products (name, sku, unit, unit_price, stock_quantity, status, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [name, sku, unit, unitPrice, stockQuantity, status, createdBy]
-  );
-  return result.insertId;
+async function createProduct({ name, sku = '', unit = '', unitPrice = '', stockQuantity = '0', status = 'active', createdBy = null }) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [result] = await connection.query(
+      'INSERT INTO products (name, sku, unit, unit_price, stock_quantity, status, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [name, sku, unit, unitPrice, stockQuantity, status, createdBy]
+    );
+    const productId = result.insertId;
+
+    // Record initial inventory transaction
+    const qty = parseFloat(stockQuantity) || 0;
+    if (qty !== 0) {
+      await connection.query(
+        'INSERT INTO inventory_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after, reference_type, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [productId, 'initial', qty, 0, qty, 'product_create', '初始库存']
+      );
+    }
+
+    await connection.commit();
+    return productId;
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
 }
 
 async function updateProduct(id, { name, sku, unit, unitPrice, stockQuantity, status }) {
@@ -182,10 +246,23 @@ async function createOrder(orderData) {
           'INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
           [orderId, item.productId, item.quantity, item.unitPrice, item.totalPrice]
         );
+        // Get current stock before update
+        const [[{ stock_quantity: currentStock }]] = await connection.query(
+          'SELECT stock_quantity FROM products WHERE id = ?',
+          [item.productId]
+        );
+        const qty = parseFloat(item.quantity) || 0;
+        const before = parseFloat(currentStock) || 0;
+        const after = before - qty;
         // Update stock
         await connection.query(
           'UPDATE products SET stock_quantity = stock_quantity - ?, updated_at = NOW() WHERE id = ?',
           [item.quantity, item.productId]
+        );
+        // Record inventory transaction
+        await connection.query(
+          'INSERT INTO inventory_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after, reference_type, reference_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [item.productId, 'out', -qty, before, after, 'order', orderId, `订单 ${orderNo} 出库`]
         );
       }
     }
@@ -244,6 +321,13 @@ async function getBills(page = 1, limit = 20) {
 exports.main = async (event, context) => {
   const { action, data = {} } = typeof event === 'string' ? JSON.parse(event) : event;
 
+  // Get caller's CloudBase UID for auto-sync
+  let callerUid = null;
+  try {
+    const { uid } = auth.getUserInfo();
+    if (uid && uid !== 'anonymous') callerUid = uid;
+  } catch { /* no auth context */ }
+
   try {
     let result;
     switch (action) {
@@ -259,8 +343,8 @@ exports.main = async (event, context) => {
       case 'users.get':
         result = await getUser(data.id);
         break;
-      case 'users.create':
-        result = await createUser(data);
+      case 'users.sync':
+        result = await syncUser(data.tcbUid);
         break;
       case 'users.update':
         await updateUser(data.id, data);

@@ -11,18 +11,21 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_PUBLISHABLE_KEY || "";
 
 /**
  * 初始化云开发实例
- * @param {Object} config - 初始化配置
- * @param {string} config.env - 环境ID，默认使用ENV_ID
- * @param {number} config.timeout - 超时时间，默认15000ms
- * @param {number} config.accessKey - 客户端Publishable Key，默认使用PUBLISHABLE_KEY
  */
 export const init = (
-  config: { env?: string; timeout?: number; accessKey?: string } = {},
+  config: {
+    env?: string;
+    region?: string;
+    timeout?: number;
+    accessKey?: string;
+  } = {},
 ) => {
   const appConfig = {
     env: config.env || ENV_ID,
+    region: config.region || "ap-shanghai",
     timeout: config.timeout || 15000,
     accessKey: config.accessKey || PUBLISHABLE_KEY,
+    auth: { detectSessionInUrl: true },
   };
 
   if (!appConfig.accessKey) {
@@ -43,7 +46,7 @@ export const app = init();
 export const checkEnvironment = () => {
   if (!isValidEnvId) {
     const message =
-      "❌ 云开发环境ID未配置\n\n请按以下步骤配置：\n1. 打开 src/utils/cloudbase.js 文件\n2. 将 ENV_ID 变量的值替换为您的云开发环境ID\n3. 保存文件并刷新页面\n\n获取环境ID：https://console.cloud.tencent.com/tcb";
+      "❌ 云开发环境ID未配置\n\n请按以下步骤配置：\n1. 打开 src/utils/cloudbase.ts 文件\n2. 将 ENV_ID 变量的值替换为您的云开发环境ID\n3. 保存文件并刷新页面\n\n获取环境ID：https://console.cloud.tencent.com/tcb";
     console.error(message);
     return false;
   }
@@ -63,7 +66,6 @@ interface OfflineLoginState {
 
 /**
  * 检查用户登录态
- * @returns {Promise} 登录状态
  */
 export const checkLogin = async (): Promise<
   SignInRes["data"]["session"] | OfflineLoginState

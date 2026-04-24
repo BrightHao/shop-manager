@@ -4,6 +4,7 @@
   "description": "Shop management cloud function API",
   "main": "index.js",
   "dependencies": {
+    "@cloudbase/node-sdk": "^3.16.0",
     "mysql2": "^3.22.2"
   }
 }

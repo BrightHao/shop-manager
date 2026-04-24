@@ -4,12 +4,12 @@ import { useState, useEffect } from "react";
 
 interface Order {
   id: number;
-  orderNo: string;
-  buyerName: string;
-  buyerPhone: string;
-  totalAmount: string;
-  settlementStatus: string;
-  settledAmount: string;
+  order_no: string;
+  buyer_name: string;
+  buyer_phone: string;
+  total_amount: string;
+  settlement_status: string;
+  settled_amount: string;
   notes: string;
   created_at: string;
 }
@@ -45,12 +45,12 @@ export default function OrdersPage() {
   const totalPages = Math.ceil(total / limit);
 
   return (
-    <div className="container mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">订单管理</h1>
+    <div className="container mx-auto max-w-6xl px-4 py-4 sm:py-8">
+      <div className="mb-4 flex items-center justify-between sm:mb-6">
+        <h1 className="text-xl font-bold sm:text-2xl">订单管理</h1>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 sm:px-4 sm:py-2 sm:text-sm"
         >
           {showForm ? "取消" : "新增订单"}
         </button>
@@ -79,7 +79,8 @@ export default function OrdersPage() {
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-lg border">
+          {/* Desktop table */}
+          <div className="hidden overflow-hidden rounded-lg border sm:block">
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50">
                 <tr>
@@ -96,25 +97,31 @@ export default function OrdersPage() {
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.id} className="border-t hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{o.orderNo}</td>
-                    <td className="px-4 py-3">{o.buyerName || "-"}</td>
-                    <td className="px-4 py-3">{o.buyerPhone || "-"}</td>
+                    <td className="px-4 py-3 font-medium">{o.order_no}</td>
+                    <td className="px-4 py-3">{o.buyer_name || "-"}</td>
+                    <td className="px-4 py-3">{o.buyer_phone || "-"}</td>
                     <td className="px-4 py-3">
-                      ¥{parseFloat(o.totalAmount).toFixed(2)}
+                      ¥{parseFloat(o.total_amount).toFixed(2)}
                     </td>
                     <td className="px-4 py-3">
                       <span
                         className={`rounded-full px-2 py-0.5 text-xs ${
-                          o.settlementStatus === "settled"
+                          o.settlement_status === "settled"
                             ? "bg-green-100 text-green-700"
                             : "bg-yellow-100 text-yellow-700"
                         }`}
                       >
-                        {o.settlementStatus === "settled" ? "已结算" : "未结算"}
+                        {o.settlement_status === "settled"
+                          ? "已结算"
+                          : "未结算"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {o.notes ? o.notes.substring(0, 20) + "..." : "-"}
+                      {o.notes
+                        ? o.notes.length > 20
+                          ? o.notes.substring(0, 20) + "..."
+                          : o.notes
+                        : "-"}
                     </td>
                     <td className="px-4 py-3">
                       {new Date(o.created_at).toLocaleString("zh-CN")}
@@ -122,7 +129,7 @@ export default function OrdersPage() {
                     <td className="px-4 py-3">
                       <button
                         onClick={() => setSelectedOrder(o.id)}
-                        className="mr-2 text-blue-600 hover:text-blue-800"
+                        className="text-blue-600 hover:text-blue-800"
                       >
                         详情
                       </button>
@@ -143,10 +150,52 @@ export default function OrdersPage() {
             </table>
           </div>
 
+          {/* Mobile cards */}
+          <div className="space-y-3 sm:hidden">
+            {orders.map((o) => (
+              <div
+                key={o.id}
+                className="rounded-lg border bg-white p-4 shadow-sm"
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-medium">{o.order_no}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${
+                      o.settlement_status === "settled"
+                        ? "bg-green-100 text-green-700"
+                        : "bg-yellow-100 text-yellow-700"
+                    }`}
+                  >
+                    {o.settlement_status === "settled" ? "已结算" : "未结算"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                  <div>买家: {o.buyer_name || "-"}</div>
+                  <div>电话: {o.buyer_phone || "-"}</div>
+                  <div className="font-medium text-gray-700">
+                    ¥{parseFloat(o.total_amount).toFixed(2)}
+                  </div>
+                  <div>{new Date(o.created_at).toLocaleString("zh-CN")}</div>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    onClick={() => setSelectedOrder(o.id)}
+                    className="text-sm text-blue-600 hover:text-blue-800"
+                  >
+                    详情
+                  </button>
+                </div>
+              </div>
+            ))}
+            {orders.length === 0 && (
+              <div className="py-8 text-center text-gray-400">暂无订单数据</div>
+            )}
+          </div>
+
           {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
               <span>
-                共 {total} 条记录，第 {page}/{totalPages} 页
+                共 {total} 条，第 {page}/{totalPages} 页
               </span>
               <div className="flex gap-2">
                 <button
@@ -184,14 +233,14 @@ function NewOrderForm({
   const [buyerPhone, setBuyerPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState([
-    { productId: "", quantity: "1", unitPrice: "0", totalPrice: "0" },
+    { productId: "", quantity: "1", unitPrice: "", totalPrice: "" },
   ]);
   const [submitting, setSubmitting] = useState(false);
 
   const addItem = () => {
     setItems([
       ...items,
-      { productId: "", quantity: "1", unitPrice: "0", totalPrice: "0" },
+      { productId: "", quantity: "1", unitPrice: "", totalPrice: "" },
     ]);
   };
 
@@ -211,7 +260,9 @@ function NewOrderForm({
         field === "unitPrice"
           ? parseFloat(value)
           : parseFloat(updated[index].unitPrice);
-      updated[index].totalPrice = String((qty * price).toFixed(2));
+      if (!isNaN(qty) && !isNaN(price)) {
+        updated[index].totalPrice = (qty * price).toFixed(2);
+      }
     }
     setItems(updated);
   };
@@ -221,6 +272,10 @@ function NewOrderForm({
     .toFixed(2);
 
   const handleSubmit = async () => {
+    if (!buyerName.trim()) {
+      alert("请输入买家名称");
+      return;
+    }
     setSubmitting(true);
     try {
       await callShopApi("orders.create", {
@@ -249,9 +304,17 @@ function NewOrderForm({
   };
 
   return (
-    <div className="mb-6 rounded-lg border bg-white p-6 shadow-sm">
-      <h2 className="mb-4 text-lg font-semibold">新增订单</h2>
-      <div className="grid grid-cols-3 gap-4">
+    <div className="mb-4 rounded-lg border bg-white p-4 shadow-sm sm:mb-6 sm:p-6">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-base font-semibold sm:text-lg">新增订单</h2>
+        <button
+          onClick={onCancel}
+          className="text-sm text-gray-400 hover:text-gray-600"
+        >
+          取消
+        </button>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>
           <label className="mb-1 block text-sm text-gray-600">买家名称</label>
           <input
@@ -259,6 +322,7 @@ function NewOrderForm({
             value={buyerName}
             onChange={(e) => setBuyerName(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="请输入买家名称"
           />
         </div>
         <div>
@@ -268,6 +332,7 @@ function NewOrderForm({
             value={buyerPhone}
             onChange={(e) => setBuyerPhone(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="请输入联系电话"
           />
         </div>
         <div>
@@ -277,6 +342,7 @@ function NewOrderForm({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             className="w-full rounded-md border px-3 py-2 text-sm"
+            placeholder="可选"
           />
         </div>
       </div>
@@ -286,30 +352,30 @@ function NewOrderForm({
           商品明细
         </label>
         {items.map((item, index) => (
-          <div key={index} className="mb-2 flex items-center gap-2">
+          <div key={index} className="mb-2 flex flex-wrap items-center gap-2">
             <input
               type="number"
               placeholder="商品ID"
               value={item.productId}
               onChange={(e) => updateItem(index, "productId", e.target.value)}
-              className="w-24 rounded-md border px-2 py-1.5 text-sm"
+              className="w-20 rounded-md border px-2 py-1.5 text-sm"
             />
             <input
               type="number"
               placeholder="数量"
               value={item.quantity}
               onChange={(e) => updateItem(index, "quantity", e.target.value)}
-              className="w-20 rounded-md border px-2 py-1.5 text-sm"
+              className="w-16 rounded-md border px-2 py-1.5 text-sm"
             />
             <input
               type="number"
               placeholder="单价"
               value={item.unitPrice}
               onChange={(e) => updateItem(index, "unitPrice", e.target.value)}
-              className="w-24 rounded-md border px-2 py-1.5 text-sm"
+              className="w-20 rounded-md border px-2 py-1.5 text-sm"
             />
-            <span className="w-24 text-sm text-gray-600">
-              ¥{item.totalPrice}
+            <span className="w-20 text-sm text-gray-600">
+              ¥{item.totalPrice || "0"}
             </span>
             {items.length > 1 && (
               <button
@@ -329,12 +395,12 @@ function NewOrderForm({
         </button>
       </div>
 
-      <div className="mt-4 flex items-center gap-4">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <span className="text-sm font-medium">合计: ¥{totalAmount}</span>
         <button
           onClick={handleSubmit}
           disabled={submitting || items.length === 0}
-          className="rounded-lg bg-green-600 px-6 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+          className="rounded-lg bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
         >
           {submitting ? "提交中..." : "确认创建"}
         </button>
@@ -368,32 +434,37 @@ function OrderDetail({ id, onClose }: { id: number; onClose: () => void }) {
     return <div className="py-4 text-center text-gray-400">未找到订单</div>;
 
   return (
-    <div className="mb-6 rounded-lg border bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">订单详情 - {order.orderNo}</h2>
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+    <div className="mb-4 rounded-lg border bg-white p-4 shadow-sm sm:mb-6 sm:p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold sm:text-lg">
+          订单详情 - {order.order_no}
+        </h2>
+        <button
+          onClick={onClose}
+          className="text-sm text-gray-500 hover:text-gray-700"
+        >
           关闭
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-4 text-sm">
+      <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
         <div>
           <span className="text-gray-500">买家:</span>
-          <span className="ml-2">{order.buyerName || "-"}</span>
+          <span className="ml-2">{order.buyer_name || "-"}</span>
         </div>
         <div>
           <span className="text-gray-500">电话:</span>
-          <span className="ml-2">{order.buyerPhone || "-"}</span>
+          <span className="ml-2">{order.buyer_phone || "-"}</span>
         </div>
         <div>
           <span className="text-gray-500">总金额:</span>
           <span className="ml-2 font-medium">
-            ¥{parseFloat(order.totalAmount).toFixed(2)}
+            ¥{parseFloat(order.total_amount).toFixed(2)}
           </span>
         </div>
         <div>
           <span className="text-gray-500">结算状态:</span>
           <span className="ml-2">
-            {order.settlementStatus === "settled" ? "已结算" : "未结算"}
+            {order.settlement_status === "settled" ? "已结算" : "未结算"}
           </span>
         </div>
         <div>
@@ -411,34 +482,36 @@ function OrderDetail({ id, onClose }: { id: number; onClose: () => void }) {
       {order.items && order.items.length > 0 && (
         <div className="mt-4">
           <h3 className="mb-2 font-medium text-gray-700">商品明细</h3>
-          <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2">商品</th>
-                <th className="px-3 py-2">SKU</th>
-                <th className="px-3 py-2">数量</th>
-                <th className="px-3 py-2">单价</th>
-                <th className="px-3 py-2">小计</th>
-              </tr>
-            </thead>
-            <tbody>
-              {order.items.map((item: any) => (
-                <tr key={item.id} className="border-t">
-                  <td className="px-3 py-2">{item.product_name || "-"}</td>
-                  <td className="px-3 py-2">{item.product_sku || "-"}</td>
-                  <td className="px-3 py-2">
-                    {parseFloat(item.quantity).toFixed(0)}
-                  </td>
-                  <td className="px-3 py-2">
-                    ¥{parseFloat(item.unitPrice).toFixed(2)}
-                  </td>
-                  <td className="px-3 py-2">
-                    ¥{parseFloat(item.totalPrice).toFixed(2)}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-2">商品</th>
+                  <th className="px-3 py-2">SKU</th>
+                  <th className="px-3 py-2">数量</th>
+                  <th className="px-3 py-2">单价</th>
+                  <th className="px-3 py-2">小计</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {order.items.map((item: any) => (
+                  <tr key={item.id} className="border-t">
+                    <td className="px-3 py-2">{item.product_name || "-"}</td>
+                    <td className="px-3 py-2">{item.product_sku || "-"}</td>
+                    <td className="px-3 py-2">
+                      {parseFloat(item.quantity).toFixed(0)}
+                    </td>
+                    <td className="px-3 py-2">
+                      ¥{parseFloat(item.unit_price).toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2">
+                      ¥{parseFloat(item.total_price).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
