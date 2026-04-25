@@ -564,8 +564,9 @@ async function getBills(page = 1, limit = 20) {
      LIMIT ? OFFSET ?`,
     [limit, offset]
   );
-  const [{ count }] = await pool.query('SELECT COUNT(*) as count FROM inventory_transactions');
-  return { data: rows, total: count };
+  const [countResult] = await pool.query('SELECT COUNT(*) as count FROM inventory_transactions');
+  const total = Number(countResult[0].count);
+  return { data: rows, total };
 }
 
 // ============================================================
