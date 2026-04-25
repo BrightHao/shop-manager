@@ -459,9 +459,14 @@ async function createOrder(orderData) {
     await connection.beginTransaction();
 
     const orderNo = 'ORD' + Date.now();
+    const createdByVal = (() => {
+      if (orderData.createdBy == null) return null;
+      const n = parseInt(orderData.createdBy);
+      return isNaN(n) ? null : n;
+    })();
     const [result] = await connection.query(
       'INSERT INTO orders (order_no, buyer_name, buyer_phone, total_amount, settlement_status, settled_amount, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [orderNo, orderData.buyerName, orderData.buyerPhone, orderData.totalAmount, orderData.settlementStatus || 'unsettled', orderData.settledAmount || '0', orderData.notes, orderData.createdBy]
+      [orderNo, orderData.buyerName, orderData.buyerPhone, orderData.totalAmount, orderData.settlementStatus || 'unsettled', orderData.settledAmount || '0', orderData.notes, createdByVal]
     );
     const orderId = result.insertId;
 
