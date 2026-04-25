@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { callShopApi } from "../api/shop";
+import { formatDate } from "../utils/date";
 
 interface DashboardData {
   users: number;
   products: number;
   orders: number;
   totalAmount: number;
+  unpaidAmount: number;
   recentOrders: any[];
   lowStockProducts: any[];
 }
@@ -39,7 +41,7 @@ export default function DashboardPage() {
       <h1 className="mb-4 text-xl font-bold sm:mb-6 sm:text-2xl">数据概览</h1>
 
       {/* Stats Cards */}
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:mb-8 sm:gap-6 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:mb-8 sm:gap-6 lg:grid-cols-5">
         <StatCard title="用户总数" value={data.users} color="blue" icon="👥" />
         <StatCard
           title="商品总数"
@@ -58,6 +60,12 @@ export default function DashboardPage() {
           value={`¥${data.totalAmount.toFixed(2)}`}
           color="orange"
           icon="💰"
+        />
+        <StatCard
+          title="未付款金额"
+          value={`¥${data.unpaidAmount.toFixed(2)}`}
+          color="red"
+          icon="⚠️"
         />
       </div>
 
@@ -83,8 +91,7 @@ export default function DashboardPage() {
                       {o.order_no}
                     </div>
                     <div className="truncate text-xs text-gray-500">
-                      {o.buyer_name || "匿名"} ·{" "}
-                      {new Date(o.created_at).toLocaleDateString("zh-CN")}
+                      {o.buyer_name || "匿名"} · {formatDate(o.created_at)}
                     </div>
                   </div>
                   <div className="ml-3 shrink-0 text-right">
@@ -118,10 +125,7 @@ export default function DashboardPage() {
                   className="flex items-center justify-between px-4 py-2.5 sm:px-6 sm:py-3"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium text-sm">{p.name}</div>
-                    <div className="truncate text-xs text-gray-500">
-                      SKU: {p.sku || "-"}
-                    </div>
+                    <div className="truncate text-sm font-medium">{p.name}</div>
                   </div>
                   <div
                     className={`ml-3 shrink-0 rounded-full px-2 py-1 text-xs font-medium ${
@@ -158,6 +162,7 @@ function StatCard({
     green: "from-green-500 to-green-600",
     purple: "from-purple-500 to-purple-600",
     orange: "from-orange-500 to-orange-600",
+    red: "from-red-500 to-red-600",
   };
 
   return (

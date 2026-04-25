@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { callShopApi } from "../api/shop";
+import { formatDateTime } from "../utils/date";
 
 interface Bill {
   id: number;
@@ -24,6 +25,7 @@ const REF_TYPE_MAP: Record<string, string> = {
   product_create: "商品创建",
   order: "订单出库",
   adjustment: "库存调整",
+  restock: "进货入库",
 };
 
 export default function BillsPage() {
@@ -105,7 +107,7 @@ export default function BillsPage() {
                     </td>
                     <td className="px-4 py-3">{b.notes || "-"}</td>
                     <td className="px-4 py-3">
-                      {new Date(b.created_at).toLocaleString("zh-CN")}
+                      {formatDateTime(b.created_at)}
                     </td>
                   </tr>
                 ))}
@@ -157,7 +159,7 @@ export default function BillsPage() {
                   </div>
                   {b.notes && <div>备注: {b.notes}</div>}
                   <div className="text-gray-400">
-                    {new Date(b.created_at).toLocaleString("zh-CN")}
+                    {formatDateTime(b.created_at)}
                   </div>
                 </div>
               </div>

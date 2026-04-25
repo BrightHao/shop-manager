@@ -1,6 +1,7 @@
 import { useAuth } from "../context/AuthContext";
 import { callShopApi } from "../api/shop";
 import { useState, useEffect } from "react";
+import { formatDateTime } from "../utils/date";
 
 interface Order {
   id: number;
@@ -14,12 +15,19 @@ interface Order {
   created_at: string;
 }
 
+interface ProductOption {
+  id: number;
+  name: string;
+  unit_price: string;
+}
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [showForm, setShowForm] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<number | null>(null);
   const limit = 20;
 
@@ -61,6 +69,18 @@ export default function OrdersPage() {
           onCancel={() => setShowForm(false)}
           onDone={() => {
             setShowForm(false);
+            fetchOrders();
+          }}
+        />
+      )}
+
+      {editingOrderId && (
+        <NewOrderForm
+          orderId={editingOrderId}
+          initialData={orders.find((o) => o.id === editingOrderId)}
+          onCancel={() => setEditingOrderId(null)}
+          onDone={() => {
+            setEditingOrderId(null);
             fetchOrders();
           }}
         />
@@ -124,15 +144,37 @@ export default function OrdersPage() {
                         : "-"}
                     </td>
                     <td className="px-4 py-3">
-                      {new Date(o.created_at).toLocaleString("zh-CN")}
+                      {formatDateTime(o.created_at)}
                     </td>
                     <td className="px-4 py-3">
                       <button
+                        onClick={() => setEditingOrderId(o.id)}
+                        className="mr-2 text-green-600 hover:text-green-800"
+                      >
+                        编辑
+                      </button>
+                      <button
                         onClick={() => setSelectedOrder(o.id)}
-                        className="text-blue-600 hover:text-blue-800"
+                        className="mr-2 text-blue-600 hover:text-blue-800"
                       >
                         详情
                       </button>
+                      {o.settlement_status !== "settled" && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm("确认此订单已付款？")) return;
+                            try {
+                              await callShopApi("orders.pay", { id: o.id });
+                              fetchOrders();
+                            } catch (e) {
+                              alert("付款操作失败");
+                            }
+                          }}
+                          className="text-orange-600 hover:text-orange-800"
+                        >
+                          已付款
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -175,7 +217,7 @@ export default function OrdersPage() {
                   <div className="font-medium text-gray-700">
                     ¥{parseFloat(o.total_amount).toFixed(2)}
                   </div>
-                  <div>{new Date(o.created_at).toLocaleString("zh-CN")}</div>
+                  <div>{formatDateTime(o.created_at)}</div>
                 </div>
                 <div className="mt-3 flex justify-end">
                   <button
@@ -224,23 +266,58 @@ export default function OrdersPage() {
 function NewOrderForm({
   onCancel,
   onDone,
+  orderId,
+  initialData,
 }: {
   onCancel: () => void;
   onDone: () => void;
+  orderId?: number | null;
+  initialData?: Order | null;
 }) {
   const { user } = useAuth();
-  const [buyerName, setBuyerName] = useState("");
-  const [buyerPhone, setBuyerPhone] = useState("");
-  const [notes, setNotes] = useState("");
+  const isEdit = !!orderId;
+  const [buyerName, setBuyerName] = useState(initialData?.buyer_name || "");
+  const [buyerPhone, setBuyerPhone] = useState(initialData?.buyer_phone || "");
+  const [notes, setNotes] = useState(initialData?.notes || "");
+  const [isPaid, setIsPaid] = useState(false);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [items, setItems] = useState([
-    { productId: "", quantity: "1", unitPrice: "", totalPrice: "" },
+    {
+      productId: "",
+      productName: "",
+      quantity: "1",
+      unitPrice: "",
+      totalPrice: "",
+    },
   ]);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoadingProducts(true);
+      try {
+        const res = await callShopApi("products.list", { page: 1, limit: 200 });
+        if (res.data) setProducts(res.data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+    fetchProducts();
+  }, []);
 
   const addItem = () => {
     setItems([
       ...items,
-      { productId: "", quantity: "1", unitPrice: "", totalPrice: "" },
+      {
+        productId: "",
+        productName: "",
+        quantity: "1",
+        unitPrice: "",
+        totalPrice: "",
+      },
     ]);
   };
 
@@ -251,6 +328,16 @@ function NewOrderForm({
   const updateItem = (index: number, field: string, value: string) => {
     const updated = [...items];
     updated[index] = { ...updated[index], [field]: value };
+    if (field === "productId") {
+      const product = products.find((p) => p.id === parseInt(value));
+      if (product) {
+        updated[index].unitPrice = product.unit_price || "";
+        updated[index].productName = product.name || "";
+        const qty = parseFloat(updated[index].quantity) || 0;
+        const price = parseFloat(product.unit_price) || 0;
+        updated[index].totalPrice = (qty * price).toFixed(2);
+      }
+    }
     if (field === "quantity" || field === "unitPrice") {
       const qty =
         field === "quantity"
@@ -262,6 +349,13 @@ function NewOrderForm({
           : parseFloat(updated[index].unitPrice);
       if (!isNaN(qty) && !isNaN(price)) {
         updated[index].totalPrice = (qty * price).toFixed(2);
+      }
+    }
+    if (field === "totalPrice") {
+      const total = parseFloat(value);
+      const qty = parseFloat(updated[index].quantity);
+      if (!isNaN(total) && !isNaN(qty) && qty > 0) {
+        updated[index].unitPrice = (total / qty).toFixed(2);
       }
     }
     setItems(updated);
@@ -278,26 +372,35 @@ function NewOrderForm({
     }
     setSubmitting(true);
     try {
-      await callShopApi("orders.create", {
-        buyerName,
-        buyerPhone,
-        totalAmount,
-        settlementStatus: "unsettled",
-        settledAmount: "0",
-        notes,
-        createdBy: user?.uid,
-        items: items
-          .filter((item) => item.productId)
-          .map((item) => ({
-            productId: parseInt(item.productId),
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-          })),
-      });
+      if (isEdit) {
+        await callShopApi("orders.update", {
+          id: orderId,
+          buyerName,
+          buyerPhone,
+          notes,
+        });
+      } else {
+        await callShopApi("orders.create", {
+          buyerName,
+          buyerPhone,
+          totalAmount,
+          settlementStatus: isPaid ? "settled" : "unsettled",
+          settledAmount: isPaid ? totalAmount : "0",
+          notes,
+          createdBy: user?.uid,
+          items: items
+            .filter((item) => item.productId)
+            .map((item) => ({
+              productId: parseInt(item.productId),
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+            })),
+        });
+      }
       onDone();
     } catch (e) {
-      alert("创建订单失败");
+      alert(isEdit ? "更新失败" : "创建订单失败");
     } finally {
       setSubmitting(false);
     }
@@ -306,7 +409,9 @@ function NewOrderForm({
   return (
     <div className="mb-4 rounded-lg border bg-white p-4 shadow-sm sm:mb-6 sm:p-6">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-base font-semibold sm:text-lg">新增订单</h2>
+        <h2 className="text-base font-semibold sm:text-lg">
+          {isEdit ? "编辑订单" : "新增订单"}
+        </h2>
         <button
           onClick={onCancel}
           className="text-sm text-gray-400 hover:text-gray-600"
@@ -347,62 +452,118 @@ function NewOrderForm({
         </div>
       </div>
 
-      <div className="mt-4">
-        <label className="mb-2 block text-sm font-medium text-gray-600">
-          商品明细
-        </label>
-        {items.map((item, index) => (
-          <div key={index} className="mb-2 flex flex-wrap items-center gap-2">
-            <input
-              type="number"
-              placeholder="商品ID"
-              value={item.productId}
-              onChange={(e) => updateItem(index, "productId", e.target.value)}
-              className="w-20 rounded-md border px-2 py-1.5 text-sm"
-            />
-            <input
-              type="number"
-              placeholder="数量"
-              value={item.quantity}
-              onChange={(e) => updateItem(index, "quantity", e.target.value)}
-              className="w-16 rounded-md border px-2 py-1.5 text-sm"
-            />
-            <input
-              type="number"
-              placeholder="单价"
-              value={item.unitPrice}
-              onChange={(e) => updateItem(index, "unitPrice", e.target.value)}
-              className="w-20 rounded-md border px-2 py-1.5 text-sm"
-            />
-            <span className="w-20 text-sm text-gray-600">
-              ¥{item.totalPrice || "0"}
-            </span>
-            {items.length > 1 && (
-              <button
-                onClick={() => removeItem(index)}
-                className="text-red-500"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        ))}
-        <button
-          onClick={addItem}
-          className="mt-2 text-sm text-blue-600 hover:text-blue-800"
-        >
-          + 添加商品
-        </button>
-      </div>
+      {!isEdit && (
+        <div className="mt-4">
+          <label className="mb-2 block text-sm font-medium text-gray-600">
+            商品明细（选择商品后自动填入单价）
+          </label>
+          {loadingProducts && (
+            <span className="text-sm text-gray-400">加载商品中...</span>
+          )}
+          {items.map((item, index) => (
+            <div key={index} className="mb-2 flex flex-wrap items-center gap-2">
+              <label className="text-sm text-gray-500">商品</label>
+              <input
+                type="text"
+                list={`product-list-${index}`}
+                value={item.productName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const matched = products.find(
+                    (p) => p.name === val || String(p.id) === val,
+                  );
+                  const updated = [...items];
+                  updated[index] = {
+                    ...updated[index],
+                    productName: val,
+                    productId: matched ? String(matched.id) : "",
+                    ...(matched
+                      ? {
+                          unitPrice: matched.unit_price || "",
+                          totalPrice: String(
+                            (
+                              (parseFloat(updated[index].quantity) || 0) *
+                              parseFloat(matched.unit_price || "")
+                            ).toFixed(2),
+                          ),
+                        }
+                      : {}),
+                  };
+                  setItems(updated);
+                }}
+                placeholder="搜索商品名称..."
+                className="w-40 rounded-md border px-2 py-1.5 text-sm"
+              />
+              <datalist id={`product-list-${index}`}>
+                {products.map((p) => (
+                  <option key={p.id} value={p.name}>
+                    {p.name} ¥{parseFloat(p.unit_price).toFixed(2)}
+                  </option>
+                ))}
+              </datalist>
+              <label className="text-sm text-gray-500">数量</label>
+              <input
+                type="number"
+                value={item.quantity}
+                onChange={(e) => updateItem(index, "quantity", e.target.value)}
+                className="w-16 rounded-md border px-2 py-1.5 text-sm"
+              />
+              <label className="text-sm text-gray-500">单价</label>
+              <input
+                type="number"
+                value={item.unitPrice}
+                onChange={(e) => updateItem(index, "unitPrice", e.target.value)}
+                className="w-20 rounded-md border px-2 py-1.5 text-sm"
+              />
+              <label className="text-sm text-gray-500">总价</label>
+              <input
+                type="number"
+                value={item.totalPrice}
+                onChange={(e) =>
+                  updateItem(index, "totalPrice", e.target.value)
+                }
+                className="w-20 rounded-md border px-2 py-1.5 text-sm"
+              />
+              {items.length > 1 && (
+                <button
+                  onClick={() => removeItem(index)}
+                  className="text-red-500"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={addItem}
+            className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+          >
+            + 添加商品
+          </button>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium">合计: ¥{totalAmount}</span>
+        {!isEdit && (
+          <>
+            <span className="text-sm font-medium">合计: ¥{totalAmount}</span>
+            <label className="flex items-center gap-1 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={isPaid}
+                onChange={(e) => setIsPaid(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              已付款
+            </label>
+          </>
+        )}
         <button
           onClick={handleSubmit}
-          disabled={submitting || items.length === 0}
+          disabled={submitting}
           className="rounded-lg bg-green-600 px-4 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
         >
-          {submitting ? "提交中..." : "确认创建"}
+          {submitting ? "提交中..." : isEdit ? "确认更新" : "确认创建"}
         </button>
         <button
           onClick={onCancel}
@@ -473,9 +634,7 @@ function OrderDetail({ id, onClose }: { id: number; onClose: () => void }) {
         </div>
         <div>
           <span className="text-gray-500">创建时间:</span>
-          <span className="ml-2">
-            {new Date(order.created_at).toLocaleString("zh-CN")}
-          </span>
+          <span className="ml-2">{formatDateTime(order.created_at)}</span>
         </div>
       </div>
 
@@ -487,7 +646,6 @@ function OrderDetail({ id, onClose }: { id: number; onClose: () => void }) {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-3 py-2">商品</th>
-                  <th className="px-3 py-2">SKU</th>
                   <th className="px-3 py-2">数量</th>
                   <th className="px-3 py-2">单价</th>
                   <th className="px-3 py-2">小计</th>
@@ -497,7 +655,6 @@ function OrderDetail({ id, onClose }: { id: number; onClose: () => void }) {
                 {order.items.map((item: any) => (
                   <tr key={item.id} className="border-t">
                     <td className="px-3 py-2">{item.product_name || "-"}</td>
-                    <td className="px-3 py-2">{item.product_sku || "-"}</td>
                     <td className="px-3 py-2">
                       {parseFloat(item.quantity).toFixed(0)}
                     </td>

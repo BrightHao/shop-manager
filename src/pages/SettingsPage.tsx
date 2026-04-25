@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { callShopApi } from "../api/shop";
+import { formatDate } from "../utils/date";
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -70,6 +71,7 @@ function UserManagement() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
+      await callShopApi("users.syncAll");
       const res = await callShopApi("users.list", { page: 1, limit: 50 });
       if (res.data) setUsers(res.data);
     } catch (e) {
@@ -145,9 +147,7 @@ function UserManagement() {
                         {u.status === "active" ? "正常" : "禁用"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      {new Date(u.created_at).toLocaleDateString("zh-CN")}
-                    </td>
+                    <td className="px-4 py-3">{formatDate(u.created_at)}</td>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => handleDelete(u.id)}
@@ -196,7 +196,7 @@ function UserManagement() {
                   <div>角色: {u.role === "admin" ? "管理员" : "操作员"}</div>
                   {u.phone && <div>手机: {u.phone}</div>}
                   <div className="text-gray-400">
-                    {new Date(u.created_at).toLocaleDateString("zh-CN")}
+                    {formatDate(u.created_at)}
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end">

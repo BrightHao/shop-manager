@@ -7,6 +7,7 @@ interface Product {
   sku: string;
   unit: string;
   unit_price: string;
+  cost_price: string;
   stock_quantity: string;
   status: string;
   created_at: string;
@@ -28,11 +29,19 @@ export default function ProductsPage() {
   const limit = 20;
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [restockTarget, setRestockTarget] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [restockQuantity, setRestockQuantity] = useState("");
+  const [restockNotes, setRestockNotes] = useState("");
+  const [restockSubmitting, setRestockSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     sku: "",
     unit: "",
     unitPrice: "",
+    costPrice: "",
     stockQuantity: "",
   });
 
@@ -65,6 +74,7 @@ export default function ProductsPage() {
       sku: generateSku(),
       unit: "",
       unitPrice: "",
+      costPrice: "",
       stockQuantity: "",
     });
   };
@@ -77,6 +87,7 @@ export default function ProductsPage() {
       sku: p.sku || "",
       unit: p.unit || "",
       unitPrice: p.unit_price || "",
+      costPrice: p.cost_price || "",
       stockQuantity: p.stock_quantity || "",
     });
   };
@@ -96,6 +107,7 @@ export default function ProductsPage() {
         sku: formData.sku,
         unit: formData.unit || "个",
         unitPrice: formData.unitPrice || "0",
+        costPrice: formData.costPrice || "0",
         stockQuantity: formData.stockQuantity || "0",
       });
       setShowForm(false);
@@ -118,6 +130,7 @@ export default function ProductsPage() {
         sku: formData.sku,
         unit: formData.unit,
         unitPrice: formData.unitPrice,
+        costPrice: formData.costPrice,
         stockQuantity: formData.stockQuantity,
       });
       setShowForm(false);
@@ -135,6 +148,31 @@ export default function ProductsPage() {
       fetchProducts();
     } catch (e) {
       alert("删除失败");
+    }
+  };
+
+  const handleRestock = async () => {
+    if (!restockTarget) return;
+    const qty = parseFloat(restockQuantity);
+    if (!qty || qty <= 0) {
+      alert("请输入有效的进货数量");
+      return;
+    }
+    setRestockSubmitting(true);
+    try {
+      await callShopApi("products.restock", {
+        productId: restockTarget.id,
+        quantity: restockQuantity,
+        notes: restockNotes || "",
+      });
+      setRestockTarget(null);
+      setRestockQuantity("");
+      setRestockNotes("");
+      fetchProducts();
+    } catch (e) {
+      alert("进货失败");
+    } finally {
+      setRestockSubmitting(false);
     }
   };
 
@@ -182,20 +220,6 @@ export default function ProductsPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-gray-600">
-                SKU编码
-              </label>
-              <input
-                type="text"
-                value={formData.sku}
-                onChange={(e) =>
-                  setFormData({ ...formData, sku: e.target.value })
-                }
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                placeholder="自动生成"
-              />
-            </div>
-            <div>
               <label className="mb-1 block text-sm text-gray-600">单位</label>
               <input
                 type="text"
@@ -220,6 +244,20 @@ export default function ProductsPage() {
                 }
                 className="w-full rounded-md border px-3 py-2 text-sm"
                 placeholder="如：12.50"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm text-gray-600">
+                进货价(元)
+              </label>
+              <input
+                type="number"
+                value={formData.costPrice}
+                onChange={(e) =>
+                  setFormData({ ...formData, costPrice: e.target.value })
+                }
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                placeholder="如：8.00"
               />
             </div>
             <div>
@@ -257,6 +295,62 @@ export default function ProductsPage() {
         </div>
       )}
 
+      {restockTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
+            <h3 className="mb-4 text-lg font-semibold">
+              进货 - {restockTarget.name}
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">
+                  进货数量
+                </label>
+                <input
+                  type="number"
+                  value={restockQuantity}
+                  onChange={(e) => setRestockQuantity(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  placeholder="请输入进货数量"
+                  min="0.01"
+                  step="0.01"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-gray-600">备注</label>
+                <input
+                  type="text"
+                  value={restockNotes}
+                  onChange={(e) => setRestockNotes(e.target.value)}
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                  placeholder="可选"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={handleRestock}
+                disabled={restockSubmitting}
+                className="rounded-lg bg-green-600 px-6 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                {restockSubmitting ? "提交中..." : "确认进货"}
+              </button>
+              <button
+                onClick={() => {
+                  setRestockTarget(null);
+                  setRestockQuantity("");
+                  setRestockNotes("");
+                }}
+                className="rounded-lg border px-6 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-4">
         <input
           type="text"
@@ -265,7 +359,7 @@ export default function ProductsPage() {
             setKeyword(e.target.value);
             setPage(1);
           }}
-          placeholder="搜索商品名称或SKU..."
+          placeholder="搜索商品名称..."
           className="w-full max-w-md rounded-md border px-4 py-2 text-sm"
         />
       </div>
@@ -283,8 +377,8 @@ export default function ProductsPage() {
                 <tr>
                   <th className="px-4 py-3 font-medium">ID</th>
                   <th className="px-4 py-3 font-medium">商品名称</th>
-                  <th className="px-4 py-3 font-medium">SKU</th>
                   <th className="px-4 py-3 font-medium">单位</th>
+                  <th className="px-4 py-3 font-medium">进货价</th>
                   <th className="px-4 py-3 font-medium">单价</th>
                   <th className="px-4 py-3 font-medium">库存</th>
                   <th className="px-4 py-3 font-medium">状态</th>
@@ -296,13 +390,15 @@ export default function ProductsPage() {
                   <tr key={p.id} className="border-t hover:bg-gray-50">
                     <td className="px-4 py-3">{p.id}</td>
                     <td className="px-4 py-3 font-medium">{p.name}</td>
-                    <td className="px-4 py-3">{p.sku || "-"}</td>
                     <td className="px-4 py-3">{p.unit}</td>
+                    <td className="px-4 py-3">
+                      ¥{parseFloat(p.cost_price || "0").toFixed(2)}
+                    </td>
                     <td className="px-4 py-3">
                       ¥{parseFloat(p.unit_price || "0").toFixed(2)}
                     </td>
                     <td className="px-4 py-3">
-                      {parseFloat(p.stock_quantity || "0").toFixed(0)}
+                      {parseFloat(p.stock_quantity || "0").toFixed(2)}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -321,6 +417,14 @@ export default function ProductsPage() {
                         className="mr-2 text-blue-600 hover:text-blue-800"
                       >
                         编辑
+                      </button>
+                      <button
+                        onClick={() =>
+                          setRestockTarget({ id: p.id, name: p.name })
+                        }
+                        className="mr-2 text-green-600 hover:text-green-800"
+                      >
+                        进货
                       </button>
                       <button
                         onClick={() => handleDelete(p.id)}
@@ -364,14 +468,12 @@ export default function ProductsPage() {
                     {p.status === "active" ? "在售" : "下架"}
                   </span>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
-                  <div>SKU: {p.sku || "-"}</div>
+                <div className="grid grid-cols-4 gap-2 text-xs text-gray-500">
                   <div>单位: {p.unit}</div>
+                  <div>进货: ¥{parseFloat(p.cost_price || "0").toFixed(2)}</div>
+                  <div>售价: ¥{parseFloat(p.unit_price || "0").toFixed(2)}</div>
                   <div>
-                    库存: {parseFloat(p.stock_quantity || "0").toFixed(0)}
-                  </div>
-                  <div className="font-medium text-gray-700">
-                    ¥{parseFloat(p.unit_price || "0").toFixed(2)}
+                    库存: {parseFloat(p.stock_quantity || "0").toFixed(2)}
                   </div>
                 </div>
                 <div className="mt-3 flex justify-end gap-4">
@@ -380,6 +482,12 @@ export default function ProductsPage() {
                     className="text-sm text-blue-600 hover:text-blue-800"
                   >
                     编辑
+                  </button>
+                  <button
+                    onClick={() => setRestockTarget({ id: p.id, name: p.name })}
+                    className="text-sm text-green-600 hover:text-green-800"
+                  >
+                    进货
                   </button>
                   <button
                     onClick={() => handleDelete(p.id)}
