@@ -18,6 +18,19 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
+// Ping the connection pool to verify MySQL is reachable before transactions
+async function verifyPool() {
+  try {
+    const conn = await pool.getConnection();
+    await conn.ping();
+    conn.release();
+  } catch (e) {
+    console.log('[pool] verify failed, re-creating pool:', e.message);
+    // Force pool to re-create connections on next getConnection
+    pool.end().catch(() => {});
+  }
+}
+
 // ============================================================
 // Call TCB Admin API — uses metadata credentials when available
 // ============================================================
@@ -362,6 +375,7 @@ async function getProduct(id) {
 }
 
 async function createProduct({ name, sku = '', unit = '', unitPrice = '', costPrice = '', stockQuantity = '0', status = 'active', createdBy = null }) {
+  await verifyPool();
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -439,6 +453,7 @@ async function getOrder(id) {
 }
 
 async function createOrder(orderData) {
+  await verifyPool();
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -518,6 +533,7 @@ async function payOrder(id) {
 // ============================================================
 
 async function createRestock({ productId, quantity, notes, createdBy }) {
+  await verifyPool();
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();

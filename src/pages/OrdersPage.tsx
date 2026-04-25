@@ -1,6 +1,6 @@
 import { useAuth } from "../context/AuthContext";
 import { callShopApi } from "../api/shop";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { formatDateTime } from "../utils/date";
 
 interface Order {
@@ -19,6 +19,72 @@ interface ProductOption {
   id: number;
   name: string;
   unit_price: string;
+}
+
+function ProductSearch({
+  value,
+  products,
+  onSelect,
+}: {
+  value: string;
+  products: ProductOption[];
+  onSelect: (p: ProductOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState(value);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setSearch(value); }, [value]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const filtered = products.filter((p) =>
+    p.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <input
+        type="text"
+        value={search}
+        onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && filtered.length === 1) {
+            onSelect(filtered[0]);
+            setSearch(filtered[0].name);
+            setOpen(false);
+          }
+        }}
+        placeholder="搜索商品名称..."
+        className="w-40 rounded-md border px-2 py-1.5 text-sm"
+      />
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 max-h-60 w-64 overflow-y-auto rounded-md border bg-white shadow-lg">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-gray-400">无匹配商品</div>
+          ) : (
+            filtered.map((p) => (
+              <div
+                key={p.id}
+                onClick={() => { onSelect(p); setSearch(p.name); setOpen(false); }}
+                className="cursor-pointer px-3 py-2 text-sm hover:bg-blue-50"
+              >
+                {p.name}{" "}
+                <span className="text-gray-400">¥{parseFloat(p.unit_price || "0").toFixed(2)}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function OrdersPage() {
@@ -463,44 +529,26 @@ function NewOrderForm({
           {items.map((item, index) => (
             <div key={index} className="mb-2 flex flex-wrap items-center gap-2">
               <label className="text-sm text-gray-500">商品</label>
-              <input
-                type="text"
-                list={`product-list-${index}`}
+              <ProductSearch
                 value={item.productName}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const matched = products.find(
-                    (p) => p.name === val || String(p.id) === val,
-                  );
+                products={products}
+                onSelect={(product) => {
                   const updated = [...items];
                   updated[index] = {
                     ...updated[index],
-                    productName: val,
-                    productId: matched ? String(matched.id) : "",
-                    ...(matched
-                      ? {
-                          unitPrice: matched.unit_price || "",
-                          totalPrice: String(
-                            (
-                              (parseFloat(updated[index].quantity) || 0) *
-                              parseFloat(matched.unit_price || "")
-                            ).toFixed(2),
-                          ),
-                        }
-                      : {}),
+                    productId: String(product.id),
+                    productName: product.name,
+                    unitPrice: product.unit_price || "",
+                    totalPrice: String(
+                      (
+                        (parseFloat(updated[index].quantity) || 0) *
+                        parseFloat(product.unit_price || "")
+                      ).toFixed(2),
+                    ),
                   };
                   setItems(updated);
                 }}
-                placeholder="搜索商品名称..."
-                className="w-40 rounded-md border px-2 py-1.5 text-sm"
               />
-              <datalist id={`product-list-${index}`}>
-                {products.map((p) => (
-                  <option key={p.id} value={p.name}>
-                    {p.name} ¥{parseFloat(p.unit_price).toFixed(2)}
-                  </option>
-                ))}
-              </datalist>
               <label className="text-sm text-gray-500">数量</label>
               <input
                 type="number"
