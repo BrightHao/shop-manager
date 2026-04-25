@@ -34,11 +34,14 @@ function ProductSearch({
   const [search, setSearch] = useState(value);
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setSearch(value); }, [value]);
+  useEffect(() => {
+    setSearch(value);
+  }, [value]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -53,7 +56,10 @@ function ProductSearch({
       <input
         type="text"
         value={search}
-        onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setOpen(true);
+        }}
         onFocus={() => setOpen(true)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && filtered.length === 1) {
@@ -73,11 +79,17 @@ function ProductSearch({
             filtered.map((p) => (
               <div
                 key={p.id}
-                onClick={() => { onSelect(p); setSearch(p.name); setOpen(false); }}
+                onClick={() => {
+                  onSelect(p);
+                  setSearch(p.name);
+                  setOpen(false);
+                }}
                 className="cursor-pointer px-3 py-2 text-sm hover:bg-blue-50"
               >
                 {p.name}{" "}
-                <span className="text-gray-400">¥{parseFloat(p.unit_price || "0").toFixed(2)}</span>
+                <span className="text-gray-400">
+                  ¥{parseFloat(p.unit_price || "0").toFixed(2)}
+                </span>
               </div>
             ))
           )}
