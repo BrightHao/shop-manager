@@ -56,6 +56,11 @@ export default function BillsPage() {
 
   const totalPages = Math.ceil(total / limit);
 
+  const goToPage = (p: number) => {
+    if (p < 1 || p > totalPages) return;
+    setPage(p);
+  };
+
   return (
     <div className="container mx-auto max-w-6xl px-4 py-4 sm:py-8">
       <h1 className="mb-4 text-xl font-bold sm:mb-6 sm:text-2xl">库存流水</h1>
@@ -171,29 +176,38 @@ export default function BillsPage() {
             )}
           </div>
 
-          {totalPages > 1 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
-              <span>
-                共 {total} 条，第 {page}/{totalPages} 页
-              </span>
-              <div className="flex gap-2">
-                <button
-                  disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
-                  className="rounded border px-3 py-1 disabled:opacity-50 hover:bg-gray-50"
-                >
-                  上一页
-                </button>
-                <button
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(page + 1)}
-                  className="rounded border px-3 py-1 disabled:opacity-50 hover:bg-gray-50"
-                >
-                  下一页
-                </button>
-              </div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
+            <span>
+              共 {total} 条，第 {page}/{totalPages} 页
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                disabled={page <= 1}
+                onClick={() => goToPage(page - 1)}
+                className="rounded border px-3 py-1 disabled:opacity-50 hover:bg-gray-50"
+              >
+                上一页
+              </button>
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={page}
+                onChange={(e) => {
+                  const p = parseInt(e.target.value);
+                  if (!isNaN(p)) goToPage(p);
+                }}
+                className="w-16 rounded border px-2 py-1 text-center"
+              />
+              <button
+                disabled={page >= totalPages}
+                onClick={() => goToPage(page + 1)}
+                className="rounded border px-3 py-1 disabled:opacity-50 hover:bg-gray-50"
+              >
+                下一页
+              </button>
             </div>
-          )}
+          </div>
         </>
       )}
     </div>
