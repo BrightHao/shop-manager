@@ -507,18 +507,56 @@ async function createOrder(orderData) {
   }
 }
 
-async function updateOrder(id, { buyerName, buyerPhone, settlementStatus, settledAmount, notes }) {
-  const fields = [];
-  const values = [];
-  if (buyerName !== undefined) { fields.push('buyer_name = ?'); values.push(buyerName); }
-  if (buyerPhone !== undefined) { fields.push('buyer_phone = ?'); values.push(buyerPhone); }
-  if (settlementStatus !== undefined) { fields.push('settlement_status = ?'); values.push(settlementStatus); }
-  if (settledAmount !== undefined) { fields.push('settled_amount = ?'); values.push(settledAmount); }
-  if (notes !== undefined) { fields.push('notes = ?'); values.push(notes); }
-  fields.push('updated_at = NOW()');
-  values.push(id);
+async function updateOrder(id, { buyerName, buyerPhone, settlementStatus, settledAmount, notes, items }) {
+  await verifyPool();
 
-  await pool.query(`UPDATE orders SET ${fields.join(', ')} WHERE id = ?`, values);
+  // Update order items first if provided, then handle order fields
+  if (items !== undefined) {
+    const [oldItems] = await pool.query(
+      'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
+      [id]
+    );
+    await pool.query('DELETE FROM order_items WHERE order_id = ?', [id]);
+    for (const item of items) {
+      if (item.productId) {
+        await pool.query(
+          'INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
+          [id, item.productId, item.quantity, item.unitPrice, item.totalPrice]
+        );
+        const oldItem = oldItems.find((o) => o.product_id === item.productId);
+        const [[{ stock_quantity: currentStock }]] = await pool.query(
+          'SELECT stock_quantity FROM products WHERE id = ?',
+          [item.productId]
+        );
+        const newQty = parseFloat(item.quantity) || 0;
+        const before = parseFloat(currentStock) || 0;
+        const oldQtyNum = oldItem ? parseFloat(oldItem.quantity) || 0 : 0;
+        const after = before + oldQtyNum - newQty;
+        await pool.query(
+          'UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?',
+          [after, item.productId]
+        );
+      }
+    }
+    // Recalculate total from new items
+    const total = items.reduce((sum, item) => sum + parseFloat(item.totalPrice || 0), 0);
+    settledAmount = settledAmount ?? (settlementStatus === 'settled' ? total.toFixed(2) : '0');
+    await pool.query(
+      'UPDATE orders SET total_amount = ?, settled_amount = ?, notes = ?, buyer_name = ?, buyer_phone = ?, settlement_status = ?, updated_at = NOW() WHERE id = ?',
+      [total.toFixed(2), settledAmount, notes, buyerName, buyerPhone, settlementStatus, id]
+    );
+  } else {
+    const fields = [];
+    const values = [];
+    if (buyerName !== undefined) { fields.push('buyer_name = ?'); values.push(buyerName); }
+    if (buyerPhone !== undefined) { fields.push('buyer_phone = ?'); values.push(buyerPhone); }
+    if (settlementStatus !== undefined) { fields.push('settlement_status = ?'); values.push(settlementStatus); }
+    if (settledAmount !== undefined) { fields.push('settled_amount = ?'); values.push(settledAmount); }
+    if (notes !== undefined) { fields.push('notes = ?'); values.push(notes); }
+    fields.push('updated_at = NOW()');
+    values.push(id);
+    await pool.query(`UPDATE orders SET ${fields.join(', ')} WHERE id = ?`, values);
+  }
 }
 
 async function deleteOrder(id) {

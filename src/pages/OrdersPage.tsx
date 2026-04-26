@@ -3,6 +3,16 @@ import { callShopApi } from "../api/shop";
 import { useState, useEffect, useRef } from "react";
 import { formatDateTime } from "../utils/date";
 
+interface OrderItem {
+  id: number;
+  product_id: number;
+  product_name?: string;
+  product_sku?: string;
+  quantity: string;
+  unit_price: string;
+  total_price: string;
+}
+
 interface Order {
   id: number;
   order_no: string;
@@ -13,6 +23,7 @@ interface Order {
   settled_amount: string;
   notes: string;
   created_at: string;
+  items?: OrderItem[];
 }
 
 interface ProductOption {
@@ -297,7 +308,13 @@ export default function OrdersPage() {
                   </div>
                   <div>{formatDateTime(o.created_at)}</div>
                 </div>
-                <div className="mt-3 flex justify-end">
+                <div className="mt-3 flex justify-end gap-3">
+                  <button
+                    onClick={() => setEditingOrderId(o.id)}
+                    className="text-sm text-green-600 hover:text-green-800"
+                  >
+                    编辑
+                  </button>
                   <button
                     onClick={() => setSelectedOrder(o.id)}
                     className="text-sm text-blue-600 hover:text-blue-800"
@@ -370,6 +387,22 @@ function NewOrderForm({
     },
   ]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Initialize items from existing order when editing
+  useEffect(() => {
+    if (isEdit && initialData?.items && initialData.items.length > 0) {
+      setItems(
+        initialData.items.map((item: any) => ({
+          productId: item.product_id || "",
+          productName: item.product_name || "",
+          quantity: item.quantity ? String(item.quantity) : "1",
+          unitPrice: item.unit_price || "",
+          totalPrice: item.total_price || "",
+        }))
+      );
+      setIsPaid(initialData.settlement_status === "settled");
+    }
+  }, [isEdit, initialData]);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -456,6 +489,17 @@ function NewOrderForm({
           buyerName,
           buyerPhone,
           notes,
+          totalAmount,
+          settlementStatus: isPaid ? "settled" : "unsettled",
+          settledAmount: isPaid ? totalAmount : "0",
+          items: items
+            .filter((item) => item.productId)
+            .map((item) => ({
+              productId: parseInt(item.productId),
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+            })),
         });
       } else {
         await callShopApi("orders.create", {
@@ -530,15 +574,14 @@ function NewOrderForm({
         </div>
       </div>
 
-      {!isEdit && (
-        <div className="mt-4">
-          <label className="mb-2 block text-sm font-medium text-gray-600">
-            商品明细（选择商品后自动填入单价）
-          </label>
-          {loadingProducts && (
-            <span className="text-sm text-gray-400">加载商品中...</span>
-          )}
-          {items.map((item, index) => (
+      <div className="mt-4">
+        <label className="mb-2 block text-sm font-medium text-gray-600">
+          商品明细（选择商品后自动填入单价）
+        </label>
+        {loadingProducts && (
+          <span className="text-sm text-gray-400">加载商品中...</span>
+        )}
+        {items.map((item, index) => (
             <div key={index} className="mb-2 flex flex-wrap items-center gap-2">
               <label className="text-sm text-gray-500">商品</label>
               <ProductSearch
@@ -601,23 +644,18 @@ function NewOrderForm({
             + 添加商品
           </button>
         </div>
-      )}
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
-        {!isEdit && (
-          <>
-            <span className="text-sm font-medium">合计: ¥{totalAmount}</span>
-            <label className="flex items-center gap-1 text-sm text-gray-600">
-              <input
-                type="checkbox"
-                checked={isPaid}
-                onChange={(e) => setIsPaid(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              已付款
-            </label>
-          </>
-        )}
+        <span className="text-sm font-medium">合计: ¥{totalAmount}</span>
+        <label className="flex items-center gap-1 text-sm text-gray-600">
+          <input
+            type="checkbox"
+            checked={isPaid}
+            onChange={(e) => setIsPaid(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          已付款
+        </label>
         <button
           onClick={handleSubmit}
           disabled={submitting}

@@ -48,35 +48,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const init = async () => {
       try {
         const auth = tcbApp.auth();
-
-        // Try getSession first (returns persisted session if any)
-        try {
-          const { data } = await auth.getSession();
-          if (data?.session && !(data.session as any).is_anonymous) {
-            const u = extractUser(data.session);
-            if (u) setUser(u);
-            setLoading(false);
-            return;
-          }
-        } catch {
-          // getSession failed, try getUser
+        const { data } = await auth.getSession();
+        if (data?.session && !(data.session as any).is_anonymous) {
+          const u = extractUser(data.session);
+          if (u) setUser(u);
         }
-
-        // Fallback: try getUser() for persisted user info
-        try {
-          const { data } = await auth.getUser();
-          if (data?.user && !data.user.is_anonymous) {
-            const u = extractUser({ user: data.user });
-            if (u) setUser(u);
-            setLoading(false);
-            return;
-          }
-        } catch {
-          // getUser also failed
-        }
-
-        // Not logged in
-        setUser(null);
       } catch {
         setUser(null);
       } finally {
