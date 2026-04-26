@@ -398,7 +398,7 @@ function NewOrderForm({
           quantity: item.quantity ? String(item.quantity) : "1",
           unitPrice: item.unit_price || "",
           totalPrice: item.total_price || "",
-        }))
+        })),
       );
       setIsPaid(initialData.settlement_status === "settled");
     }
@@ -582,68 +582,66 @@ function NewOrderForm({
           <span className="text-sm text-gray-400">加载商品中...</span>
         )}
         {items.map((item, index) => (
-            <div key={index} className="mb-2 flex flex-wrap items-center gap-2">
-              <label className="text-sm text-gray-500">商品</label>
-              <ProductSearch
-                value={item.productName}
-                products={products}
-                onSelect={(product) => {
-                  const updated = [...items];
-                  updated[index] = {
-                    ...updated[index],
-                    productId: String(product.id),
-                    productName: product.name,
-                    unitPrice: product.unit_price || "",
-                    totalPrice: String(
-                      (
-                        (parseFloat(updated[index].quantity) || 0) *
-                        parseFloat(product.unit_price || "")
-                      ).toFixed(2),
-                    ),
-                  };
-                  setItems(updated);
-                }}
-              />
-              <label className="text-sm text-gray-500">数量</label>
-              <input
-                type="number"
-                value={item.quantity}
-                onChange={(e) => updateItem(index, "quantity", e.target.value)}
-                className="w-16 rounded-md border px-2 py-1.5 text-sm"
-              />
-              <label className="text-sm text-gray-500">单价</label>
-              <input
-                type="number"
-                value={item.unitPrice}
-                onChange={(e) => updateItem(index, "unitPrice", e.target.value)}
-                className="w-20 rounded-md border px-2 py-1.5 text-sm"
-              />
-              <label className="text-sm text-gray-500">总价</label>
-              <input
-                type="number"
-                value={item.totalPrice}
-                onChange={(e) =>
-                  updateItem(index, "totalPrice", e.target.value)
-                }
-                className="w-20 rounded-md border px-2 py-1.5 text-sm"
-              />
-              {items.length > 1 && (
-                <button
-                  onClick={() => removeItem(index)}
-                  className="text-red-500"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          ))}
-          <button
-            onClick={addItem}
-            className="mt-2 text-sm text-blue-600 hover:text-blue-800"
-          >
-            + 添加商品
-          </button>
-        </div>
+          <div key={index} className="mb-2 flex flex-wrap items-center gap-2">
+            <label className="text-sm text-gray-500">商品</label>
+            <ProductSearch
+              value={item.productName}
+              products={products}
+              onSelect={(product) => {
+                const updated = [...items];
+                updated[index] = {
+                  ...updated[index],
+                  productId: String(product.id),
+                  productName: product.name,
+                  unitPrice: product.unit_price || "",
+                  totalPrice: String(
+                    (
+                      (parseFloat(updated[index].quantity) || 0) *
+                      parseFloat(product.unit_price || "")
+                    ).toFixed(2),
+                  ),
+                };
+                setItems(updated);
+              }}
+            />
+            <label className="text-sm text-gray-500">数量</label>
+            <input
+              type="number"
+              value={item.quantity}
+              onChange={(e) => updateItem(index, "quantity", e.target.value)}
+              className="w-16 rounded-md border px-2 py-1.5 text-sm"
+            />
+            <label className="text-sm text-gray-500">单价</label>
+            <input
+              type="number"
+              value={item.unitPrice}
+              onChange={(e) => updateItem(index, "unitPrice", e.target.value)}
+              className="w-20 rounded-md border px-2 py-1.5 text-sm"
+            />
+            <label className="text-sm text-gray-500">总价</label>
+            <input
+              type="number"
+              value={item.totalPrice}
+              onChange={(e) => updateItem(index, "totalPrice", e.target.value)}
+              className="w-20 rounded-md border px-2 py-1.5 text-sm"
+            />
+            {items.length > 1 && (
+              <button
+                onClick={() => removeItem(index)}
+                className="text-red-500"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          onClick={addItem}
+          className="mt-2 text-sm text-blue-600 hover:text-blue-800"
+        >
+          + 添加商品
+        </button>
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <span className="text-sm font-medium">合计: ¥{totalAmount}</span>

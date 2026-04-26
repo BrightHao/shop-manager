@@ -7,27 +7,32 @@ const app = tcb.init({ env: process.env.TCB_ENV_ID || 'shop-manage-d6gsos8yoe600
 const auth = app.auth();
 const ENV_ID = process.env.TCB_ENV_ID || 'shop-manage-d6gsos8yoe6002412';
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'sh-cynosdbmysql-grp-43hug5h6.sql.tencentcdb.com',
-  port: parseInt(process.env.DB_PORT || '25967'),
-  user: process.env.DB_USER || 'tcb_user',
-  password: process.env.DB_PASSWORD || 'TcbUser@2026pass',
-  database: process.env.DB_NAME || 'shop-manage-d6gsos8yoe6002412',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+function createPool() {
+  return mysql.createPool({
+    host: process.env.DB_HOST || 'sh-cynosdbmysql-grp-43hug5h6.sql.tencentcdb.com',
+    port: parseInt(process.env.DB_PORT || '25967'),
+    user: process.env.DB_USER || 'tcb_user',
+    password: process.env.DB_PASSWORD || 'TcbUser@2026pass',
+    database: process.env.DB_NAME || 'shop-manage-d6gsos8yoe6002412',
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+  });
+}
 
-// Ping the connection pool to verify MySQL is reachable before transactions
-async function verifyPool() {
+let pool = createPool();
+
+// Get a healthy connection, recreating pool if needed
+async function getConnection() {
   try {
     const conn = await pool.getConnection();
-    await conn.ping();
-    conn.release();
+    return conn;
   } catch (e) {
-    console.log('[pool] verify failed, re-creating pool:', e.message);
-    // Force pool to re-create connections on next getConnection
+    // Pool is stale or broken, recreate it
+    console.log('[pool] connection failed, recreating pool:', e.message);
     pool.end().catch(() => {});
+    pool = createPool();
+    return await pool.getConnection();
   }
 }
 
@@ -375,8 +380,7 @@ async function getProduct(id) {
 }
 
 async function createProduct({ name, sku = '', unit = '', unitPrice = '', costPrice = '', stockQuantity = '0', status = 'active', createdBy = null }) {
-  await verifyPool();
-  const connection = await pool.getConnection();
+  const connection = await getConnection();
   try {
     await connection.beginTransaction();
 
@@ -453,8 +457,7 @@ async function getOrder(id) {
 }
 
 async function createOrder(orderData) {
-  await verifyPool();
-  const connection = await pool.getConnection();
+  const connection = await getConnection();
   try {
     await connection.beginTransaction();
 
@@ -477,23 +480,23 @@ async function createOrder(orderData) {
           [orderId, item.productId, item.quantity, item.unitPrice, item.totalPrice]
         );
         // Get current stock before update
-        const [[{ stock_quantity: currentStock }]] = await connection.query(
+        const [rows] = await connection.query(
           'SELECT stock_quantity FROM products WHERE id = ?',
           [item.productId]
         );
-        const qty = parseFloat(item.quantity) || 0;
-        const before = parseFloat(currentStock) || 0;
-        const after = before - qty;
-        // Update stock
-        await connection.query(
-          'UPDATE products SET stock_quantity = stock_quantity - ?, updated_at = NOW() WHERE id = ?',
-          [item.quantity, item.productId]
-        );
-        // Record inventory transaction
-        await connection.query(
-          'INSERT INTO inventory_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after, reference_type, reference_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [item.productId, 'out', -qty, before, after, 'order', orderId, `订单 ${orderNo} 出库`]
-        );
+        if (rows.length > 0) {
+          const qty = parseFloat(item.quantity) || 0;
+          const before = parseFloat(rows[0].stock_quantity) || 0;
+          const after = before - qty;
+          await connection.query(
+            'UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?',
+            [after, item.productId]
+          );
+          await connection.query(
+            'INSERT INTO inventory_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after, reference_type, reference_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [item.productId, 'out', -qty, before, after, 'order', orderId, `订单 ${orderNo} 出库`]
+          );
+        }
       }
     }
 
@@ -508,54 +511,66 @@ async function createOrder(orderData) {
 }
 
 async function updateOrder(id, { buyerName, buyerPhone, settlementStatus, settledAmount, notes, items }) {
-  await verifyPool();
+  const connection = await getConnection();
+  try {
+    await connection.beginTransaction();
 
-  // Update order items first if provided, then handle order fields
-  if (items !== undefined) {
-    const [oldItems] = await pool.query(
-      'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
-      [id]
-    );
-    await pool.query('DELETE FROM order_items WHERE order_id = ?', [id]);
-    for (const item of items) {
-      if (item.productId) {
-        await pool.query(
-          'INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
-          [id, item.productId, item.quantity, item.unitPrice, item.totalPrice]
-        );
-        const oldItem = oldItems.find((o) => o.product_id === item.productId);
-        const [[{ stock_quantity: currentStock }]] = await pool.query(
-          'SELECT stock_quantity FROM products WHERE id = ?',
-          [item.productId]
-        );
-        const newQty = parseFloat(item.quantity) || 0;
-        const before = parseFloat(currentStock) || 0;
-        const oldQtyNum = oldItem ? parseFloat(oldItem.quantity) || 0 : 0;
-        const after = before + oldQtyNum - newQty;
-        await pool.query(
-          'UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?',
-          [after, item.productId]
-        );
+    // Update order items first if provided, then handle order fields
+    if (items !== undefined) {
+      const [oldItems] = await connection.query(
+        'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
+        [id]
+      );
+      await connection.query('DELETE FROM order_items WHERE order_id = ?', [id]);
+      for (const item of items) {
+        if (item.productId) {
+          await connection.query(
+            'INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
+            [id, item.productId, item.quantity, item.unitPrice, item.totalPrice]
+          );
+          const oldItem = oldItems.find((o) => o.product_id === item.productId);
+          const [stockRows] = await connection.query(
+            'SELECT stock_quantity FROM products WHERE id = ?',
+            [item.productId]
+          );
+          if (stockRows.length > 0) {
+            const newQty = parseFloat(item.quantity) || 0;
+            const before = parseFloat(stockRows[0].stock_quantity) || 0;
+            const oldQtyNum = oldItem ? parseFloat(oldItem.quantity) || 0 : 0;
+            const after = before + oldQtyNum - newQty;
+            await connection.query(
+              'UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?',
+              [after, item.productId]
+            );
+          }
+        }
       }
+      // Recalculate total from new items
+      const total = items.reduce((sum, item) => sum + parseFloat(item.totalPrice || 0), 0);
+      settledAmount = settledAmount ?? (settlementStatus === 'settled' ? total.toFixed(2) : '0');
+      await connection.query(
+        'UPDATE orders SET total_amount = ?, settled_amount = ?, notes = ?, buyer_name = ?, buyer_phone = ?, settlement_status = ?, updated_at = NOW() WHERE id = ?',
+        [total.toFixed(2), settledAmount, notes, buyerName, buyerPhone, settlementStatus, id]
+      );
+    } else {
+      const fields = [];
+      const values = [];
+      if (buyerName !== undefined) { fields.push('buyer_name = ?'); values.push(buyerName); }
+      if (buyerPhone !== undefined) { fields.push('buyer_phone = ?'); values.push(buyerPhone); }
+      if (settlementStatus !== undefined) { fields.push('settlement_status = ?'); values.push(settlementStatus); }
+      if (settledAmount !== undefined) { fields.push('settled_amount = ?'); values.push(settledAmount); }
+      if (notes !== undefined) { fields.push('notes = ?'); values.push(notes); }
+      fields.push('updated_at = NOW()');
+      values.push(id);
+      await connection.query(`UPDATE orders SET ${fields.join(', ')} WHERE id = ?`, values);
     }
-    // Recalculate total from new items
-    const total = items.reduce((sum, item) => sum + parseFloat(item.totalPrice || 0), 0);
-    settledAmount = settledAmount ?? (settlementStatus === 'settled' ? total.toFixed(2) : '0');
-    await pool.query(
-      'UPDATE orders SET total_amount = ?, settled_amount = ?, notes = ?, buyer_name = ?, buyer_phone = ?, settlement_status = ?, updated_at = NOW() WHERE id = ?',
-      [total.toFixed(2), settledAmount, notes, buyerName, buyerPhone, settlementStatus, id]
-    );
-  } else {
-    const fields = [];
-    const values = [];
-    if (buyerName !== undefined) { fields.push('buyer_name = ?'); values.push(buyerName); }
-    if (buyerPhone !== undefined) { fields.push('buyer_phone = ?'); values.push(buyerPhone); }
-    if (settlementStatus !== undefined) { fields.push('settlement_status = ?'); values.push(settlementStatus); }
-    if (settledAmount !== undefined) { fields.push('settled_amount = ?'); values.push(settledAmount); }
-    if (notes !== undefined) { fields.push('notes = ?'); values.push(notes); }
-    fields.push('updated_at = NOW()');
-    values.push(id);
-    await pool.query(`UPDATE orders SET ${fields.join(', ')} WHERE id = ?`, values);
+
+    await connection.commit();
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
   }
 }
 
@@ -576,17 +591,17 @@ async function payOrder(id) {
 // ============================================================
 
 async function createRestock({ productId, quantity, notes, createdBy }) {
-  await verifyPool();
-  const connection = await pool.getConnection();
+  const connection = await getConnection();
   try {
     await connection.beginTransaction();
 
-    const [[{ stock_quantity: currentStock }]] = await connection.query(
+    const [stockRows] = await connection.query(
       'SELECT stock_quantity FROM products WHERE id = ?',
       [productId]
     );
+    if (stockRows.length === 0) throw new Error('Product not found');
     const qty = parseFloat(quantity) || 0;
-    const before = parseFloat(currentStock) || 0;
+    const before = parseFloat(stockRows[0].stock_quantity) || 0;
     const after = before + qty;
 
     await connection.query(
