@@ -214,7 +214,12 @@ async function getDashboard() {
   const [orders] = await pool.query('SELECT COUNT(*) as count FROM orders');
   const [total] = await pool.query('SELECT COALESCE(SUM(total_amount), 0) as total FROM orders');
   const [unpaid] = await pool.query("SELECT COALESCE(SUM(total_amount), 0) as unpaid FROM orders WHERE settlement_status != 'settled'");
-  const [recentOrders] = await pool.query('SELECT * FROM orders ORDER BY created_at DESC LIMIT 5');
+  const [recentOrders] = await pool.query(
+    'SELECT id, order_no, buyer_name, buyer_phone, total_amount, settlement_status, settled_amount, notes, created_by, ' +
+    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
+    'FROM orders ORDER BY created_at DESC LIMIT 5'
+  );
   const [lowStock] = await pool.query(
     'SELECT * FROM products WHERE CAST(stock_quantity AS DECIMAL) < 10 ORDER BY stock_quantity ASC LIMIT 5'
   );
@@ -237,7 +242,10 @@ async function getDashboard() {
 async function getUsers(page = 1, limit = 20) {
   const offset = (page - 1) * limit;
   const [rows] = await pool.query(
-    'SELECT * FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?',
+    'SELECT id, name, email, phone, role, status, tcb_uid, ' +
+    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
+    'FROM users ORDER BY created_at DESC LIMIT ? OFFSET ?',
     [limit, offset]
   );
   const [{ count }] = await pool.query('SELECT COUNT(*) as count FROM users');
@@ -245,7 +253,11 @@ async function getUsers(page = 1, limit = 20) {
 }
 
 async function getUser(id) {
-  const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [id]);
+  const [rows] = await pool.query(
+    'SELECT id, name, email, phone, role, status, tcb_uid, ' +
+    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
+    'FROM users WHERE id = ?', [id]);
   return rows[0] || null;
 }
 
@@ -275,7 +287,11 @@ async function deleteUser(id) {
 // Sync CloudBase Auth user to MySQL
 async function syncUser(tcbUid) {
   const mysqlId = await ensureUserInMySQL(tcbUid);
-  const [rows] = await pool.query('SELECT * FROM users WHERE id = ?', [mysqlId]);
+  const [rows] = await pool.query(
+    'SELECT id, name, email, phone, role, status, tcb_uid, ' +
+    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
+    'FROM users WHERE id = ?', [mysqlId]);
   return rows[0];
 }
 
@@ -355,7 +371,9 @@ async function syncAllUsers() {
 
 async function getProducts(page = 1, limit = 20, keyword = '') {
   const offset = (page - 1) * limit;
-  let sql = 'SELECT * FROM products';
+  let sql = 'SELECT id, name, sku, unit, unit_price, cost_price, stock_quantity, status, created_by, ' +
+    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at FROM products';
   let countSql = 'SELECT COUNT(*) as count FROM products';
   const params = [];
 
@@ -375,7 +393,11 @@ async function getProducts(page = 1, limit = 20, keyword = '') {
 }
 
 async function getProduct(id) {
-  const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
+  const [rows] = await pool.query(
+    'SELECT id, name, sku, unit, unit_price, cost_price, stock_quantity, status, created_by, ' +
+    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
+    'FROM products WHERE id = ?', [id]);
   return rows[0] || null;
 }
 
@@ -436,7 +458,10 @@ async function deleteProduct(id) {
 async function getOrders(page = 1, limit = 20) {
   const offset = (page - 1) * limit;
   const [rows] = await pool.query(
-    'SELECT * FROM orders ORDER BY created_at DESC LIMIT ? OFFSET ?',
+    'SELECT id, order_no, buyer_name, buyer_phone, total_amount, settlement_status, settled_amount, notes, created_by, ' +
+    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
+    'FROM orders ORDER BY created_at DESC LIMIT ? OFFSET ?',
     [limit, offset]
   );
   const [{ count }] = await pool.query('SELECT COUNT(*) as count FROM orders');
@@ -444,7 +469,11 @@ async function getOrders(page = 1, limit = 20) {
 }
 
 async function getOrder(id) {
-  const [rows] = await pool.query('SELECT * FROM orders WHERE id = ?', [id]);
+  const [rows] = await pool.query(
+    'SELECT id, order_no, buyer_name, buyer_phone, total_amount, settlement_status, settled_amount, notes, created_by, ' +
+    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
+    'FROM orders WHERE id = ?', [id]);
   const order = rows[0] || null;
   if (order) {
     const [items] = await pool.query(
@@ -631,7 +660,9 @@ async function createRestock({ productId, quantity, notes, createdBy }) {
 async function getBills(page = 1, limit = 20) {
   const offset = (page - 1) * limit;
   const [rows] = await pool.query(
-    `SELECT it.*, p.name as product_name
+    `SELECT it.id, it.product_id, it.transaction_type, it.quantity_change, it.quantity_before, it.quantity_after, it.reference_type, it.reference_id, it.notes, it.created_by,
+     DATE_FORMAT(it.created_at, '%Y-%m-%d %H:%i:%s') as created_at,
+     p.name as product_name
      FROM inventory_transactions it
      LEFT JOIN products p ON it.product_id = p.id
      ORDER BY it.created_at DESC

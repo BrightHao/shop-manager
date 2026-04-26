@@ -1,5 +1,9 @@
 @AGENTS.md
 
+## 开发前必读
+
+每次开发前，**必须阅读 `BUG_HISTORY.md`** 了解已知 bug，避免重复触发已知问题。
+
 ## Testing Requirements
 
 每次代码变更后，**必须测试相关功能**：

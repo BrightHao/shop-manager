@@ -45,21 +45,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     const init = async () => {
+      // Timeout guard: 5 seconds max for auth check
+      const timeout = setTimeout(() => {
+        if (!cancelled) {
+          console.warn("[Auth] Session check timed out, assuming not logged in");
+          setLoading(false);
+        }
+      }, 5000);
+
       try {
         const auth = tcbApp.auth();
         const { data } = await auth.getSession();
+        if (cancelled) return;
         if (data?.session && !(data.session as any).is_anonymous) {
           const u = extractUser(data.session);
           if (u) setUser(u);
         }
-      } catch {
+      } catch (e) {
+        console.warn("[Auth] Session check failed:", e);
         setUser(null);
       } finally {
-        setLoading(false);
+        clearTimeout(timeout);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
     init();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = async (username: string, password: string) => {
