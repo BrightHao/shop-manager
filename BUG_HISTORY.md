@@ -55,7 +55,22 @@ MySQL `TIMESTAMP` 字段内部以 UTC 存储。查询返回时 MySQL 按 session
 
 ---
 
-## [已修复] 空白页首次访问
+## [已修复] 创建订单报 Out of range value for column 'created_by'
+
+**发现日期**: 2026-04-27
+
+### 根因
+前端传 `createdBy: user?.uid`（TCB Auth UID，19位数字），但 MySQL `orders.created_by` 是 `int` 类型，超范围溢出，订单根本没创建成功。
+
+### 修复
+`createOrder` 改为通过 `callerUid` 查 `users.tcb_uid` → MySQL `users.id`，再写入 `created_by`。
+
+### 防范
+写 `created_by` 时不能直接用 TCB UID，必须先转 MySQL id。
+
+---
+
+## [未修复] 空白页首次访问
 
 **发现日期**: 2026-04-26
 **状态**: 待修复

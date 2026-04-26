@@ -17,22 +17,47 @@ function createPool() {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
+    connectTimeout: 10000,
+    acquireTimeout: 10000,
+    timeout: 30000,
   });
 }
 
 let pool = createPool();
+let poolRecreating = false;
 
-// Get a healthy connection, recreating pool if needed
-async function getConnection() {
+// Get a healthy connection with retry on failure
+async function getConnection(retries = 0) {
   try {
     const conn = await pool.getConnection();
     return conn;
   } catch (e) {
-    // Pool is stale or broken, recreate it
-    console.log('[pool] connection failed, recreating pool:', e.message);
-    pool.end().catch(() => {});
-    pool = createPool();
-    return await pool.getConnection();
+    // Only retry on connection-level errors (pool stale, network reset, etc.)
+    const isRetryable = e.code === 'ECONNRESET' ||
+      e.message.includes('Malformed') ||
+      e.message.includes('ER_CON_COUNT_ERROR') ||
+      e.message.includes('PROTOCOL_CONNECTION_LOST') ||
+      e.message.includes('getaddrinfo') ||
+      (retries === 0 && e.code === 'ECONNREFUSED');
+
+    if (!isRetryable || retries >= 3) throw e;
+
+    // Serialize pool recreation to avoid racing multiple invocations
+    if (!poolRecreating) {
+      poolRecreating = true;
+      console.log(`[pool] connection failed (attempt ${retries + 1}), recreating:`, e.message);
+      try {
+        pool.end().catch(() => {});
+        pool = createPool();
+      } finally {
+        poolRecreating = false;
+      }
+    } else {
+      // Another invocation is recreating, wait a moment
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    return getConnection(retries + 1);
   }
 }
 
@@ -485,17 +510,20 @@ async function getOrder(id) {
   return order;
 }
 
-async function createOrder(orderData) {
+async function createOrder(orderData, callerUid) {
   const connection = await getConnection();
   try {
     await connection.beginTransaction();
 
     const orderNo = 'ORD' + Date.now();
-    const createdByVal = (() => {
-      if (orderData.createdBy == null) return null;
-      const n = parseInt(orderData.createdBy);
-      return isNaN(n) ? null : n;
-    })();
+    let createdByVal = null;
+
+    if (callerUid) {
+      const [uidRows] = await connection.query('SELECT id FROM users WHERE tcb_uid = ?', [callerUid]);
+      if (uidRows.length > 0) {
+        createdByVal = uidRows[0].id;
+      }
+    }
     const [result] = await connection.query(
       'INSERT INTO orders (order_no, buyer_name, buyer_phone, total_amount, settlement_status, settled_amount, notes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       [orderNo, orderData.buyerName, orderData.buyerPhone, orderData.totalAmount, orderData.settlementStatus || 'unsettled', orderData.settledAmount || '0', orderData.notes, createdByVal]
@@ -750,7 +778,7 @@ exports.main = async (event, context) => {
         result = await getOrder(data.id);
         break;
       case 'orders.create':
-        result = await createOrder(data);
+        result = await createOrder(data, callerUid);
         break;
       case 'orders.update':
         await updateOrder(data.id, data);
