@@ -245,6 +245,25 @@ async function getDashboard() {
     'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
     'FROM orders ORDER BY created_at DESC LIMIT 5'
   );
+
+  // Fetch items for recent orders
+  if (recentOrders.length > 0) {
+    const orderIds = recentOrders.map(o => o.id);
+    const [items] = await pool.query(
+      'SELECT oi.order_id, p.name as product_name FROM order_items oi ' +
+      'JOIN products p ON oi.product_id = p.id WHERE oi.order_id IN (?) ORDER BY oi.id ASC',
+      [orderIds]
+    );
+    const itemsMap = new Map();
+    for (const item of items) {
+      if (!itemsMap.has(item.order_id)) itemsMap.set(item.order_id, []);
+      itemsMap.get(item.order_id).push(item.product_name);
+    }
+    for (const order of recentOrders) {
+      order.items = itemsMap.get(order.id) || [];
+    }
+  }
+
   const [lowStock] = await pool.query(
     'SELECT * FROM products WHERE CAST(stock_quantity AS DECIMAL) < 10 ORDER BY stock_quantity ASC LIMIT 5'
   );
@@ -396,44 +415,51 @@ async function syncAllUsers() {
 
 async function getProducts(page = 1, limit = 20, keyword = '') {
   const offset = (page - 1) * limit;
-  let sql = 'SELECT id, name, sku, unit, unit_price, cost_price, stock_quantity, status, created_by, ' +
-    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
-    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at FROM products';
-  let countSql = 'SELECT COUNT(*) as count FROM products';
+  let sql = 'SELECT p.id, p.name, p.sku, p.unit, p.unit_price, p.cost_price, p.stock_quantity, p.status, p.category_id, p.created_by, ' +
+    'DATE_FORMAT(p.created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(p.updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at, ' +
+    'c.name as category_name ' +
+    'FROM products p LEFT JOIN categories c ON p.category_id = c.id';
+  let countSql = 'SELECT COUNT(*) as count FROM products p';
   const params = [];
+  const countParams = [];
 
   if (keyword) {
-    sql += ' WHERE name LIKE ? OR sku LIKE ?';
-    countSql += ' WHERE name LIKE ? OR sku LIKE ?';
+    sql += ' WHERE (p.name LIKE ? OR p.sku LIKE ?)';
+    countSql += ' WHERE (p.name LIKE ? OR p.sku LIKE ?)';
     const like = `%${keyword}%`;
     params.push(like, like);
+    countParams.push(like, like);
   }
 
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  sql += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
   params.push(limit, offset);
 
   const [rows] = await pool.query(sql, params);
-  const [{ count }] = await pool.query(countSql, params.slice(0, keyword ? 2 : 0));
+  const countRows = await pool.query('SELECT COUNT(*) as count FROM products p');
+  const count = Number(countRows[0]?.[0]?.count ?? 0);
   return { data: rows, total: count };
 }
 
 async function getProduct(id) {
   const [rows] = await pool.query(
-    'SELECT id, name, sku, unit, unit_price, cost_price, stock_quantity, status, created_by, ' +
-    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
-    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
-    'FROM products WHERE id = ?', [id]);
+    'SELECT p.id, p.name, p.sku, p.unit, p.unit_price, p.cost_price, p.stock_quantity, p.status, p.category_id, p.created_by, ' +
+    'DATE_FORMAT(p.created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(p.updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at, ' +
+    'c.name as category_name ' +
+    'FROM products p LEFT JOIN categories c ON p.category_id = c.id ' +
+    'WHERE p.id = ?', [id]);
   return rows[0] || null;
 }
 
-async function createProduct({ name, sku = '', unit = '', unitPrice = '', costPrice = '', stockQuantity = '0', status = 'active', createdBy = null }) {
+async function createProduct({ name, sku = '', unit = '', unitPrice = '', costPrice = '', stockQuantity = '0', status = 'active', categoryId = null, createdBy = null }) {
   const connection = await getConnection();
   try {
     await connection.beginTransaction();
 
     const [result] = await connection.query(
-      'INSERT INTO products (name, sku, unit, unit_price, cost_price, stock_quantity, status, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [name, sku, unit, unitPrice, costPrice, stockQuantity, status, createdBy]
+      'INSERT INTO products (name, sku, unit, unit_price, cost_price, stock_quantity, status, category_id, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [name, sku, unit, unitPrice, costPrice, stockQuantity, status, categoryId, createdBy]
     );
     const productId = result.insertId;
 
@@ -456,46 +482,106 @@ async function createProduct({ name, sku = '', unit = '', unitPrice = '', costPr
   }
 }
 
-async function updateProduct(id, { name, sku, unit, unitPrice, costPrice, stockQuantity, status }) {
-  const fields = [];
-  const values = [];
-  if (name !== undefined) { fields.push('name = ?'); values.push(name); }
-  if (sku !== undefined) { fields.push('sku = ?'); values.push(sku); }
-  if (unit !== undefined) { fields.push('unit = ?'); values.push(unit); }
-  if (unitPrice !== undefined) { fields.push('unit_price = ?'); values.push(unitPrice); }
-  if (costPrice !== undefined) { fields.push('cost_price = ?'); values.push(costPrice); }
-  if (stockQuantity !== undefined) { fields.push('stock_quantity = ?'); values.push(stockQuantity); }
-  if (status !== undefined) { fields.push('status = ?'); values.push(status); }
-  fields.push('updated_at = NOW()');
-  values.push(id);
+async function updateProduct(id, { name, sku, unit, unitPrice, costPrice, stockQuantity, status, categoryId }) {
+  const connection = await getConnection();
+  try {
+    const [stockRows] = await connection.query('SELECT stock_quantity FROM products WHERE id = ?', [id]);
+    const before = parseFloat(stockRows[0]?.stock_quantity) || 0;
+    const newQty = stockQuantity !== undefined ? parseFloat(stockQuantity) : before;
+    const diff = newQty - before;
 
-  await pool.query(`UPDATE products SET ${fields.join(', ')} WHERE id = ?`, values);
+    const fields = [];
+    const values = [];
+    if (name !== undefined) { fields.push('name = ?'); values.push(name); }
+    if (sku !== undefined) { fields.push('sku = ?'); values.push(sku); }
+    if (unit !== undefined) { fields.push('unit = ?'); values.push(unit); }
+    if (unitPrice !== undefined) { fields.push('unit_price = ?'); values.push(unitPrice); }
+    if (costPrice !== undefined) { fields.push('cost_price = ?'); values.push(costPrice); }
+    if (stockQuantity !== undefined) { fields.push('stock_quantity = ?'); values.push(stockQuantity); }
+    if (status !== undefined) { fields.push('status = ?'); values.push(status); }
+    if (categoryId !== undefined) { fields.push('category_id = ?'); values.push(categoryId); }
+    fields.push('updated_at = NOW()');
+    values.push(id);
+
+    await connection.query(`UPDATE products SET ${fields.join(', ')} WHERE id = ?`, values);
+
+    // Record inventory transaction if stock changed
+    if (diff !== 0) {
+      const txType = diff > 0 ? 'in' : 'out';
+      await connection.query(
+        'INSERT INTO inventory_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after, reference_type, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [id, txType, diff, before, newQty, 'adjust', '商品库存调整']
+      );
+    }
+  } finally {
+    connection.release();
+  }
 }
 
 async function deleteProduct(id) {
   await pool.query('DELETE FROM products WHERE id = ?', [id]);
 }
 
+async function getCategories() {
+  const [rows] = await pool.query(
+    'SELECT id, name, sort_order FROM categories ORDER BY sort_order ASC, id ASC'
+  );
+  return rows;
+}
+
 // ============================================================
 // Orders
 // ============================================================
 
-async function getOrders(page = 1, limit = 20, paymentStatus) {
+async function getOrders(page = 1, limit = 20, paymentStatus, productKeyword) {
   const offset = (page - 1) * limit;
-  let whereClause = '';
+  const conditions = [];
+  const params = [];
+  const countParams = [];
+
   if (paymentStatus === 'paid') {
-    whereClause = "WHERE settlement_status = 'settled'";
+    conditions.push("o.settlement_status = 'settled'");
   } else if (paymentStatus === 'unpaid') {
-    whereClause = "WHERE settlement_status != 'settled'";
+    conditions.push("o.settlement_status != 'settled'");
   }
+
+  if (productKeyword) {
+    conditions.push("EXISTS (SELECT 1 FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = o.id AND p.name LIKE ?)");
+    const like = `%${productKeyword}%`;
+    params.push(like);
+    countParams.push(like);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
   const [rows] = await pool.query(
-    'SELECT id, order_no, buyer_name, buyer_phone, total_amount, settlement_status, settled_amount, notes, created_by, ' +
-    'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
-    'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
-    `FROM orders ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-    [limit, offset]
+    'SELECT o.id, o.order_no, o.buyer_name, o.buyer_phone, o.total_amount, o.settlement_status, o.settled_amount, o.notes, o.created_by, ' +
+    'DATE_FORMAT(o.created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
+    'DATE_FORMAT(o.updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
+    `FROM orders o ${whereClause} ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
   );
-  const [{ count }] = await pool.query(`SELECT COUNT(*) as count FROM orders ${whereClause}`);
+
+  // Fetch product names for each order
+  if (rows.length > 0) {
+    const orderIds = rows.map(o => o.id);
+    const [items] = await pool.query(
+      'SELECT oi.order_id, p.name as product_name FROM order_items oi ' +
+      'JOIN products p ON oi.product_id = p.id WHERE oi.order_id IN (?) ORDER BY oi.id ASC',
+      [orderIds]
+    );
+    const itemsMap = new Map();
+    for (const item of items) {
+      if (!itemsMap.has(item.order_id)) itemsMap.set(item.order_id, []);
+      itemsMap.get(item.order_id).push(item.product_name);
+    }
+    for (const order of rows) {
+      order.items = itemsMap.get(order.id) || [];
+    }
+  }
+
+  const countRows = await pool.query(`SELECT COUNT(*) as count FROM orders o ${whereClause}`, countParams);
+  const count = Number(countRows[0]?.[0]?.count ?? 0);
   return { data: rows, total: count };
 }
 
@@ -517,6 +603,10 @@ async function getOrder(id) {
 }
 
 async function createOrder(orderData, callerUid) {
+  const validItems = orderData.items?.filter(item => item.productId) || [];
+  if (validItems.length === 0) {
+    throw new Error('请至少选择一个商品');
+  }
   const connection = await getConnection();
   try {
     await connection.beginTransaction();
@@ -536,8 +626,8 @@ async function createOrder(orderData, callerUid) {
     );
     const orderId = result.insertId;
 
-    if (orderData.items && orderData.items.length > 0) {
-      for (const item of orderData.items) {
+    if (validItems.length > 0) {
+      for (const item of validItems) {
         await connection.query(
           'INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
           [orderId, item.productId, item.quantity, item.unitPrice, item.totalPrice]
@@ -578,12 +668,55 @@ async function updateOrder(id, { buyerName, buyerPhone, settlementStatus, settle
   try {
     await connection.beginTransaction();
 
+    // Get order_no for inventory transaction notes
+    const [orderRows] = await connection.query('SELECT order_no FROM orders WHERE id = ?', [id]);
+    const orderNo = orderRows[0]?.order_no || String(id);
+
     // Update order items first if provided, then handle order fields
     if (items !== undefined) {
       const [oldItems] = await connection.query(
         'SELECT product_id, quantity FROM order_items WHERE order_id = ?',
         [id]
       );
+
+      // Build maps for old items and new items
+      const oldItemMap = new Map(oldItems.map(o => [String(o.product_id), parseFloat(o.quantity) || 0]));
+      const newItemMap = new Map(items.filter(i => i.productId).map(i => [String(i.productId), parseFloat(i.quantity) || 0]));
+
+      // First pass: compute all stock changes and apply updates
+      for (const item of items) {
+        if (!item.productId) continue;
+
+        const [stockRows] = await connection.query(
+          'SELECT stock_quantity FROM products WHERE id = ?',
+          [item.productId]
+        );
+        if (stockRows.length === 0) continue;
+
+        const newQty = newItemMap.get(String(item.productId)) || 0;
+        const oldQty = oldItemMap.get(String(item.productId)) || 0;
+        const diff = newQty - oldQty;
+
+        if (diff === 0) continue;
+
+        const before = parseFloat(stockRows[0].stock_quantity) || 0;
+        const after = before + diff;
+
+        // Update stock
+        await connection.query(
+          'UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?',
+          [after, item.productId]
+        );
+
+        // Record inventory transaction
+        const txType = diff > 0 ? 'in' : 'out';
+        await connection.query(
+          'INSERT INTO inventory_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after, reference_type, reference_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [item.productId, txType, diff, before, after, 'order', id, `订单 ${orderNo} 修改`]
+        );
+      }
+
+      // Delete old and insert new items
       await connection.query('DELETE FROM order_items WHERE order_id = ?', [id]);
       for (const item of items) {
         if (item.productId) {
@@ -591,23 +724,9 @@ async function updateOrder(id, { buyerName, buyerPhone, settlementStatus, settle
             'INSERT INTO order_items (order_id, product_id, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?)',
             [id, item.productId, item.quantity, item.unitPrice, item.totalPrice]
           );
-          const oldItem = oldItems.find((o) => o.product_id === item.productId);
-          const [stockRows] = await connection.query(
-            'SELECT stock_quantity FROM products WHERE id = ?',
-            [item.productId]
-          );
-          if (stockRows.length > 0) {
-            const newQty = parseFloat(item.quantity) || 0;
-            const before = parseFloat(stockRows[0].stock_quantity) || 0;
-            const oldQtyNum = oldItem ? parseFloat(oldItem.quantity) || 0 : 0;
-            const after = before + oldQtyNum - newQty;
-            await connection.query(
-              'UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?',
-              [after, item.productId]
-            );
-          }
         }
       }
+
       // Recalculate total from new items
       const total = items.reduce((sum, item) => sum + parseFloat(item.totalPrice || 0), 0);
       settledAmount = settledAmount ?? (settlementStatus === 'settled' ? total.toFixed(2) : '0');
@@ -691,19 +810,42 @@ async function createRestock({ productId, quantity, notes, createdBy }) {
 // Bills (Inventory Transactions)
 // ============================================================
 
-async function getBills(page = 1, limit = 20) {
+async function getBills(page = 1, limit = 20, productKeyword, categoryId) {
   const offset = (page - 1) * limit;
+  const conditions = [];
+  const params = [];
+  const countParams = [];
+
+  if (productKeyword) {
+    conditions.push('p.name LIKE ?');
+    const like = `%${productKeyword}%`;
+    params.push(like);
+    countParams.push(like);
+  }
+
+  if (categoryId) {
+    conditions.push('p.category_id = ?');
+    params.push(categoryId);
+    countParams.push(categoryId);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
   const [rows] = await pool.query(
     `SELECT it.id, it.product_id, it.transaction_type, it.quantity_change, it.quantity_before, it.quantity_after, it.reference_type, it.reference_id, it.notes, it.created_by,
      DATE_FORMAT(it.created_at, '%Y-%m-%d %H:%i:%s') as created_at,
-     p.name as product_name
+     p.name as product_name, p.category_id
      FROM inventory_transactions it
      LEFT JOIN products p ON it.product_id = p.id
+     ${whereClause}
      ORDER BY it.created_at DESC
      LIMIT ? OFFSET ?`,
-    [limit, offset]
+    [...params, limit, offset]
   );
-  const [countResult] = await pool.query('SELECT COUNT(*) as count FROM inventory_transactions');
+  const [countResult] = await pool.query(
+    `SELECT COUNT(*) as count FROM inventory_transactions it LEFT JOIN products p ON it.product_id = p.id ${whereClause}`,
+    countParams
+  );
   const total = Number(countResult[0].count);
   return { data: rows, total };
 }
@@ -756,6 +898,9 @@ exports.main = async (event, context) => {
       case 'products.list':
         result = await getProducts(data.page, data.limit, data.keyword);
         break;
+      case 'products.categories':
+        result = await getCategories();
+        break;
       case 'products.get':
         result = await getProduct(data.id);
         break;
@@ -778,7 +923,7 @@ exports.main = async (event, context) => {
 
       // Orders
       case 'orders.list':
-        result = await getOrders(data.page, data.limit, data.paymentStatus);
+        result = await getOrders(data.page, data.limit, data.paymentStatus, data.productKeyword);
         break;
       case 'orders.get':
         result = await getOrder(data.id);
@@ -801,7 +946,7 @@ exports.main = async (event, context) => {
 
       // Bills
       case 'bills.list':
-        result = await getBills(data.page, data.limit);
+        result = await getBills(data.page, data.limit, data.productKeyword, data.categoryId);
         break;
 
       default:

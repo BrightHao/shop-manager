@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { callShopApi } from "../api/shop";
 import { formatDateTime } from "../utils/date";
 
 interface Bill {
   id: number;
+  product_id: number;
   product_name: string;
   transaction_type: string;
   quantity_change: string;
@@ -12,6 +13,7 @@ interface Bill {
   reference_type: string;
   notes: string;
   created_at: string;
+  category_id: number | null;
 }
 
 const TX_TYPE_MAP: Record<string, string> = {
@@ -30,42 +32,82 @@ const REF_TYPE_MAP: Record<string, string> = {
 
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [productKeyword, setProductKeyword] = useState("");
   const limit = 20;
 
-  const fetchBills = async () => {
-    setLoading(true);
-    try {
-      const res = await callShopApi("bills.list", { page, limit });
-      if (res.data) {
-        setBills(res.data);
-        setTotal(res.total || 0);
+  // Infinite scroll sentinel
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  const fetchBills = useCallback(
+    async (pageNum: number, reset = false) => {
+      if (loading) return;
+      setLoading(true);
+      try {
+        const res = await callShopApi("bills.list", {
+          page: pageNum,
+          limit,
+          ...(productKeyword && { productKeyword }),
+        });
+        if (res.data) {
+          setBills((prev) => (reset ? res.data : [...prev, ...res.data]));
+          setTotal(res.total || 0);
+          setHasMore((res.data as Bill[]).length >= limit);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [loading, productKeyword, limit],
+  );
 
+  // Initial load and filter change
   useEffect(() => {
-    fetchBills();
-  }, [page]);
+    setPage(1);
+    setBills([]);
+    setHasMore(true);
+    fetchBills(1, true);
+  }, [productKeyword]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-
-  const goToPage = (p: number) => {
-    if (p < 1 || p > totalPages) return;
-    setPage(p);
-  };
+  // Infinite scroll
+  useEffect(() => {
+    if (observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          const nextPage = page + 1;
+          setPage(nextPage);
+          fetchBills(nextPage);
+        }
+      },
+      { rootMargin: "100px" },
+    );
+    if (sentinelRef.current) observerRef.current.observe(sentinelRef.current);
+    return () => observerRef.current?.disconnect();
+  }, [hasMore, loading, page, fetchBills]);
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-4 sm:py-8">
       <h1 className="mb-4 text-xl font-bold sm:mb-6 sm:text-2xl">库存流水</h1>
 
-      {loading ? (
+      {/* Search */}
+      <div className="mb-4">
+        <input
+          type="text"
+          value={productKeyword}
+          onChange={(e) => setProductKeyword(e.target.value)}
+          placeholder="搜索商品名称..."
+          className="w-full max-w-md rounded-md border px-4 py-2 text-sm"
+        />
+      </div>
+
+      {loading && bills.length === 0 ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
         </div>
@@ -176,38 +218,20 @@ export default function BillsPage() {
             )}
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
-            <span>
-              共 {total} 条，第 {page}/{totalPages} 页
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                disabled={page <= 1}
-                onClick={() => goToPage(page - 1)}
-                className="rounded border px-3 py-1 disabled:opacity-50 hover:bg-gray-50"
-              >
-                上一页
-              </button>
-              <input
-                type="number"
-                min={1}
-                max={totalPages}
-                value={page}
-                onChange={(e) => {
-                  const p = parseInt(e.target.value);
-                  if (!isNaN(p)) goToPage(p);
-                }}
-                className="w-16 rounded border px-2 py-1 text-center"
-              />
-              <button
-                disabled={page >= totalPages}
-                onClick={() => goToPage(page + 1)}
-                className="rounded border px-3 py-1 disabled:opacity-50 hover:bg-gray-50"
-              >
-                下一页
-              </button>
+          {/* Load more sentinel */}
+          <div ref={sentinelRef} className="h-px" />
+
+          {loading && bills.length > 0 && (
+            <div className="flex justify-center py-4">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
             </div>
-          </div>
+          )}
+
+          {!hasMore && bills.length > 0 && (
+            <div className="py-4 text-center text-sm text-gray-400">
+              已加载全部 {total} 条数据
+            </div>
+          )}
         </>
       )}
     </div>

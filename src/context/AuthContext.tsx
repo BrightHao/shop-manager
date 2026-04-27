@@ -51,7 +51,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Timeout guard: 5 seconds max for auth check
       const timeout = setTimeout(() => {
         if (!cancelled) {
-          console.warn("[Auth] Session check timed out, assuming not logged in");
+          console.warn(
+            "[Auth] Session check timed out, assuming not logged in",
+          );
           setLoading(false);
         }
       }, 5000);

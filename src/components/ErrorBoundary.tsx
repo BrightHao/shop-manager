@@ -25,7 +25,9 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
           <div className="max-w-md rounded-xl border border-red-200 bg-white p-6 shadow-lg">
-            <h2 className="mb-2 text-lg font-bold text-red-600">页面加载失败</h2>
+            <h2 className="mb-2 text-lg font-bold text-red-600">
+              页面加载失败
+            </h2>
             <p className="mb-4 text-sm text-gray-600">
               请尝试刷新页面。如果问题持续存在，请联系管理员。
             </p>

@@ -1,7 +1,8 @@
 import { useAuth } from "../context/AuthContext";
 import { callShopApi } from "../api/shop";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { formatDateTime } from "../utils/date";
+import Modal from "../components/Modal";
 
 interface OrderItem {
   id: number;
@@ -23,7 +24,8 @@ interface Order {
   settled_amount: string;
   notes: string;
   created_at: string;
-  items?: OrderItem[];
+  items?: string[];
+  fullItems?: OrderItem[];
 }
 
 interface ProductOption {
@@ -112,9 +114,10 @@ function ProductSearch({
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
   const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
   const [editOrderData, setEditOrderData] = useState<Order | null>(null);
@@ -122,32 +125,62 @@ export default function OrdersPage() {
   const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "unpaid">(
     "all",
   );
+  const [productKeyword, setProductKeyword] = useState("");
   const limit = 20;
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      const res = await callShopApi("orders.list", {
-        page,
-        limit,
-        ...(paymentFilter !== "all" && { paymentStatus: paymentFilter }),
-      });
-      if (res.data) {
-        setOrders(res.data);
-        setTotal(res.total || 0);
+  // Infinite scroll sentinel
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  const fetchOrders = useCallback(
+    async (pageNum: number, reset = false) => {
+      if (loading) return;
+      setLoading(true);
+      try {
+        const res = await callShopApi("orders.list", {
+          page: pageNum,
+          limit,
+          ...(paymentFilter !== "all" && { paymentStatus: paymentFilter }),
+          ...(productKeyword && { productKeyword }),
+        });
+        if (res.data) {
+          setOrders((prev) => (reset ? res.data : [...prev, ...res.data]));
+          setTotal(res.total || 0);
+          setHasMore((res.data as Order[]).length >= limit);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
       }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [loading, paymentFilter, productKeyword, limit],
+  );
 
+  // Initial load and filter change
   useEffect(() => {
-    fetchOrders();
-  }, [page, paymentFilter]);
+    setPage(1);
+    setOrders([]);
+    setHasMore(true);
+    fetchOrders(1, true);
+  }, [paymentFilter, productKeyword]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const totalPages = Math.ceil(total / limit);
+  // Infinite scroll
+  useEffect(() => {
+    if (observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          const nextPage = page + 1;
+          setPage(nextPage);
+          fetchOrders(nextPage);
+        }
+      },
+      { rootMargin: "100px" },
+    );
+    if (sentinelRef.current) observerRef.current.observe(sentinelRef.current);
+    return () => observerRef.current?.disconnect();
+  }, [hasMore, loading, page, fetchOrders]);
 
   const handleEdit = async (orderId: number) => {
     try {
@@ -170,7 +203,6 @@ export default function OrdersPage() {
             value={paymentFilter}
             onChange={(e) => {
               setPaymentFilter(e.target.value as "all" | "paid" | "unpaid");
-              setPage(1);
             }}
             className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
           >
@@ -187,40 +219,65 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {showForm && (
-        <NewOrderForm
-          onCancel={() => setShowForm(false)}
-          onDone={() => {
-            setShowForm(false);
-            fetchOrders();
-          }}
+      {/* Product search */}
+      <div className="mb-4">
+        <input
+          type="text"
+          value={productKeyword}
+          onChange={(e) => setProductKeyword(e.target.value)}
+          placeholder="按商品名称搜索订单..."
+          className="w-full max-w-md rounded-md border px-4 py-2 text-sm"
         />
+      </div>
+
+      {showForm && (
+        <Modal title="新增订单" open onClose={() => setShowForm(false)}>
+          <NewOrderForm
+            onCancel={() => setShowForm(false)}
+            onDone={() => {
+              setShowForm(false);
+              setOrders([]);
+              setPage(1);
+              fetchOrders(1, true);
+            }}
+          />
+        </Modal>
       )}
 
       {editingOrderId && editOrderData && (
-        <NewOrderForm
-          orderId={editingOrderId}
-          initialData={editOrderData}
-          onCancel={() => {
+        <Modal
+          title="编辑订单"
+          open
+          onClose={() => {
             setEditingOrderId(null);
             setEditOrderData(null);
           }}
-          onDone={() => {
-            setEditingOrderId(null);
-            setEditOrderData(null);
-            fetchOrders();
-          }}
-        />
+        >
+          <NewOrderForm
+            orderId={editingOrderId}
+            initialData={editOrderData}
+            onCancel={() => {
+              setEditingOrderId(null);
+              setEditOrderData(null);
+            }}
+            onDone={() => {
+              setEditingOrderId(null);
+              setEditOrderData(null);
+              setOrders([]);
+              setPage(1);
+              fetchOrders(1, true);
+            }}
+          />
+        </Modal>
       )}
 
       {detailOrderId && (
-        <OrderDetail
-          id={detailOrderId}
-          onClose={() => setDetailOrderId(null)}
-        />
+        <Modal title="订单详情" open onClose={() => setDetailOrderId(null)}>
+          <OrderDetail id={detailOrderId} />
+        </Modal>
       )}
 
-      {loading ? (
+      {loading && orders.length === 0 ? (
         <div className="flex items-center justify-center py-20">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent"></div>
         </div>
@@ -231,7 +288,7 @@ export default function OrdersPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 font-medium">订单编号</th>
+                  <th className="px-4 py-3 font-medium">商品</th>
                   <th className="px-4 py-3 font-medium">买家</th>
                   <th className="px-4 py-3 font-medium">联系电话</th>
                   <th className="px-4 py-3 font-medium">金额</th>
@@ -242,69 +299,83 @@ export default function OrdersPage() {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => (
-                  <tr key={o.id} className="border-t hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium">{o.order_no}</td>
-                    <td className="px-4 py-3">{o.buyer_name || "-"}</td>
-                    <td className="px-4 py-3">{o.buyer_phone || "-"}</td>
-                    <td className="px-4 py-3">
-                      ¥{parseFloat(o.total_amount).toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs ${
-                          o.settlement_status === "settled"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-yellow-100 text-yellow-700"
-                        }`}
+                {orders.map((o) => {
+                  const productNames = o.items?.join("、") || o.order_no;
+                  const truncated =
+                    productNames.length > 7
+                      ? productNames.slice(0, 7) + "..."
+                      : productNames;
+                  return (
+                    <tr key={o.id} className="border-t hover:bg-gray-50">
+                      <td
+                        className="max-w-[150px] truncate px-4 py-3 font-medium"
+                        title={productNames}
                       >
-                        {o.settlement_status === "settled"
-                          ? "已结算"
-                          : "未结算"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {o.notes
-                        ? o.notes.length > 20
-                          ? o.notes.substring(0, 20) + "..."
-                          : o.notes
-                        : "-"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {formatDateTime(o.created_at)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => handleEdit(o.id)}
-                        className="mr-2 text-green-600 hover:text-green-800"
-                      >
-                        编辑
-                      </button>
-                      <button
-                        onClick={() => setDetailOrderId(o.id)}
-                        className="mr-2 text-blue-600 hover:text-blue-800"
-                      >
-                        详情
-                      </button>
-                      {o.settlement_status !== "settled" && (
-                        <button
-                          onClick={async () => {
-                            if (!confirm("确认此订单已付款？")) return;
-                            try {
-                              await callShopApi("orders.pay", { id: o.id });
-                              fetchOrders();
-                            } catch (e) {
-                              alert("付款操作失败");
-                            }
-                          }}
-                          className="text-orange-600 hover:text-orange-800"
+                        {truncated}
+                      </td>
+                      <td className="px-4 py-3">{o.buyer_name || "-"}</td>
+                      <td className="px-4 py-3">{o.buyer_phone || "-"}</td>
+                      <td className="px-4 py-3">
+                        ¥{parseFloat(o.total_amount).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${
+                            o.settlement_status === "settled"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-yellow-100 text-yellow-700"
+                          }`}
                         >
-                          已付款
+                          {o.settlement_status === "settled"
+                            ? "已结算"
+                            : "未结算"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {o.notes
+                          ? o.notes.length > 20
+                            ? o.notes.substring(0, 20) + "..."
+                            : o.notes
+                          : "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatDateTime(o.created_at)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => handleEdit(o.id)}
+                          className="mr-2 text-green-600 hover:text-green-800"
+                        >
+                          编辑
                         </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                        <button
+                          onClick={() => setDetailOrderId(o.id)}
+                          className="mr-2 text-blue-600 hover:text-blue-800"
+                        >
+                          详情
+                        </button>
+                        {o.settlement_status !== "settled" && (
+                          <button
+                            onClick={async () => {
+                              if (!confirm("确认此订单已付款？")) return;
+                              try {
+                                await callShopApi("orders.pay", { id: o.id });
+                                setPage(1);
+                                setOrders([]);
+                                fetchOrders(1, true);
+                              } catch (e) {
+                                alert("付款操作失败");
+                              }
+                            }}
+                            className="text-orange-600 hover:text-orange-800"
+                          >
+                            已付款
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {orders.length === 0 && (
                   <tr>
                     <td
@@ -321,73 +392,76 @@ export default function OrdersPage() {
 
           {/* Mobile cards */}
           <div className="space-y-3 sm:hidden">
-            {orders.map((o) => (
-              <div
-                key={o.id}
-                className="rounded-lg border bg-white p-4 shadow-sm"
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="font-medium">{o.order_no}</span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs ${
-                      o.settlement_status === "settled"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-yellow-100 text-yellow-700"
-                    }`}
-                  >
-                    {o.settlement_status === "settled" ? "已结算" : "未结算"}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                  <div>买家: {o.buyer_name || "-"}</div>
-                  <div>电话: {o.buyer_phone || "-"}</div>
-                  <div className="font-medium text-gray-700">
-                    ¥{parseFloat(o.total_amount).toFixed(2)}
+            {orders.map((o) => {
+              const productNames = o.items?.join("、") || o.order_no;
+              const truncated =
+                productNames.length > 7
+                  ? productNames.slice(0, 7) + "..."
+                  : productNames;
+              return (
+                <div
+                  key={o.id}
+                  className="rounded-lg border bg-white p-4 shadow-sm"
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <span
+                      className="max-w-[200px] truncate font-medium"
+                      title={productNames}
+                    >
+                      {truncated}
+                    </span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs ${
+                        o.settlement_status === "settled"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-yellow-100 text-yellow-700"
+                      }`}
+                    >
+                      {o.settlement_status === "settled" ? "已结算" : "未结算"}
+                    </span>
                   </div>
-                  <div>{formatDateTime(o.created_at)}</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                    <div>买家: {o.buyer_name || "-"}</div>
+                    <div>电话: {o.buyer_phone || "-"}</div>
+                    <div className="font-medium text-gray-700">
+                      ¥{parseFloat(o.total_amount).toFixed(2)}
+                    </div>
+                    <div>{formatDateTime(o.created_at)}</div>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-3">
+                    <button
+                      onClick={() => handleEdit(o.id)}
+                      className="text-sm text-green-600 hover:text-green-800"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      onClick={() => setDetailOrderId(o.id)}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      详情
+                    </button>
+                  </div>
                 </div>
-                <div className="mt-3 flex justify-end gap-3">
-                  <button
-                    onClick={() => handleEdit(o.id)}
-                    className="text-sm text-green-600 hover:text-green-800"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    onClick={() => setDetailOrderId(o.id)}
-                    className="text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    详情
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             {orders.length === 0 && (
               <div className="py-8 text-center text-gray-400">暂无订单数据</div>
             )}
           </div>
 
-          {totalPages > 1 && (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600">
-              <span>
-                共 {total} 条，第 {page}/{totalPages} 页
-              </span>
-              <div className="flex gap-2">
-                <button
-                  disabled={page <= 1}
-                  onClick={() => setPage(page - 1)}
-                  className="rounded border px-3 py-1 disabled:opacity-50 hover:bg-gray-50"
-                >
-                  上一页
-                </button>
-                <button
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(page + 1)}
-                  className="rounded border px-3 py-1 disabled:opacity-50 hover:bg-gray-50"
-                >
-                  下一页
-                </button>
-              </div>
+          {/* Load more sentinel */}
+          <div ref={sentinelRef} className="h-px" />
+
+          {loading && orders.length > 0 && (
+            <div className="flex justify-center py-4">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+            </div>
+          )}
+
+          {!hasMore && orders.length > 0 && (
+            <div className="py-4 text-center text-sm text-gray-400">
+              已加载全部 {total} 条数据
             </div>
           )}
         </>
@@ -428,9 +502,9 @@ function NewOrderForm({
 
   // Initialize items from existing order when editing
   useEffect(() => {
-    if (isEdit && initialData?.items && initialData.items.length > 0) {
+    if (isEdit && initialData?.fullItems && initialData.fullItems.length > 0) {
       setItems(
-        initialData.items.map((item: any) => ({
+        initialData.fullItems.map((item: any) => ({
           productId: item.product_id || "",
           productName: item.product_name || "",
           quantity: item.quantity ? String(item.quantity) : "1",
@@ -522,6 +596,11 @@ function NewOrderForm({
       alert("请输入买家名称");
       return;
     }
+    const validItems = items.filter((item) => item.productId);
+    if (validItems.length === 0) {
+      alert("请至少选择一个商品");
+      return;
+    }
     setSubmitting(true);
     try {
       if (isEdit) {
@@ -570,7 +649,7 @@ function NewOrderForm({
   };
 
   return (
-    <div className="mb-4 rounded-lg border bg-white p-4 shadow-sm sm:mb-6 sm:p-6">
+    <div>
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-semibold sm:text-lg">
           {isEdit ? "编辑订单" : "新增订单"}
@@ -713,7 +792,7 @@ function NewOrderForm({
   );
 }
 
-function OrderDetail({ id, onClose }: { id: number; onClose: () => void }) {
+function OrderDetail({ id }: { id: number }) {
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -732,17 +811,11 @@ function OrderDetail({ id, onClose }: { id: number; onClose: () => void }) {
     return <div className="py-4 text-center text-gray-400">未找到订单</div>;
 
   return (
-    <div className="mb-4 rounded-lg border bg-white p-4 shadow-sm sm:mb-6 sm:p-6">
+    <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold sm:text-lg">
           订单详情 - {order.order_no}
         </h2>
-        <button
-          onClick={onClose}
-          className="text-sm text-gray-500 hover:text-gray-700"
-        >
-          关闭
-        </button>
       </div>
       <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
         <div>

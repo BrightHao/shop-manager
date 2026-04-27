@@ -19,7 +19,15 @@ export default function DashboardPage() {
   useEffect(() => {
     callShopApi("dashboard")
       .then((res) => {
-        if (res) setData(res);
+        // callShopApi returns { code, message, data: dashboardData }
+        // JS SDK may wrap in result.result, so check both levels
+        const dashboard =
+          res?.data?.totalAmount !== undefined
+            ? res.data
+            : res?.totalAmount !== undefined
+              ? res
+              : null;
+        if (dashboard) setData(dashboard);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -81,29 +89,41 @@ export default function DashboardPage() {
                 暂无订单
               </div>
             ) : (
-              data.recentOrders.map((o: any) => (
-                <div
-                  key={o.id}
-                  className="flex items-center justify-between px-4 py-2.5 sm:px-6 sm:py-3"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">
-                      {o.order_no}
+              data.recentOrders.map((o: any) => {
+                const productNames = o.items?.join("、") || o.order_no;
+                const truncated =
+                  productNames.length > 7
+                    ? productNames.slice(0, 7) + "..."
+                    : productNames;
+                return (
+                  <div
+                    key={o.id}
+                    className="flex items-center justify-between px-4 py-2.5 sm:px-6 sm:py-3"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="truncate text-sm font-medium"
+                        title={productNames}
+                      >
+                        {truncated}
+                      </div>
+                      <div className="truncate text-xs text-gray-500">
+                        {o.buyer_name || "匿名"} · {formatDate(o.created_at)}
+                      </div>
                     </div>
-                    <div className="truncate text-xs text-gray-500">
-                      {o.buyer_name || "匿名"} · {formatDate(o.created_at)}
+                    <div className="ml-3 shrink-0 text-right">
+                      <div className="text-sm font-medium">
+                        ¥{parseFloat(o.total_amount).toFixed(2)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {o.settlement_status === "settled"
+                          ? "已结算"
+                          : "未结算"}
+                      </div>
                     </div>
                   </div>
-                  <div className="ml-3 shrink-0 text-right">
-                    <div className="text-sm font-medium">
-                      ¥{parseFloat(o.total_amount).toFixed(2)}
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {o.settlement_status === "settled" ? "已结算" : "未结算"}
-                    </div>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
