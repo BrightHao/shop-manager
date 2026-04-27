@@ -117,13 +117,21 @@ export default function OrdersPage() {
   const [total, setTotal] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
-  const [selectedOrder, setSelectedOrder] = useState<number | null>(null);
+  const [editOrderData, setEditOrderData] = useState<Order | null>(null);
+  const [detailOrderId, setDetailOrderId] = useState<number | null>(null);
+  const [paymentFilter, setPaymentFilter] = useState<"all" | "paid" | "unpaid">(
+    "all",
+  );
   const limit = 20;
 
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const res = await callShopApi("orders.list", { page, limit });
+      const res = await callShopApi("orders.list", {
+        page,
+        limit,
+        ...(paymentFilter !== "all" && { paymentStatus: paymentFilter }),
+      });
       if (res.data) {
         setOrders(res.data);
         setTotal(res.total || 0);
@@ -137,20 +145,46 @@ export default function OrdersPage() {
 
   useEffect(() => {
     fetchOrders();
-  }, [page]);
+  }, [page, paymentFilter]);
 
   const totalPages = Math.ceil(total / limit);
+
+  const handleEdit = async (orderId: number) => {
+    try {
+      const order = await callShopApi("orders.get", { id: orderId });
+      if (order) {
+        setEditingOrderId(orderId);
+        setEditOrderData(order);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <div className="container mx-auto max-w-6xl px-4 py-4 sm:py-8">
       <div className="mb-4 flex items-center justify-between sm:mb-6">
         <h1 className="text-xl font-bold sm:text-2xl">订单管理</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 sm:px-4 sm:py-2 sm:text-sm"
-        >
-          {showForm ? "取消" : "新增订单"}
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={paymentFilter}
+            onChange={(e) => {
+              setPaymentFilter(e.target.value as "all" | "paid" | "unpaid");
+              setPage(1);
+            }}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="all">全部</option>
+            <option value="paid">已付款</option>
+            <option value="unpaid">未付款</option>
+          </select>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-700 sm:px-4 sm:py-2 sm:text-sm"
+          >
+            {showForm ? "取消" : "新增订单"}
+          </button>
+        </div>
       </div>
 
       {showForm && (
@@ -163,22 +197,26 @@ export default function OrdersPage() {
         />
       )}
 
-      {editingOrderId && (
+      {editingOrderId && editOrderData && (
         <NewOrderForm
           orderId={editingOrderId}
-          initialData={orders.find((o) => o.id === editingOrderId)}
-          onCancel={() => setEditingOrderId(null)}
+          initialData={editOrderData}
+          onCancel={() => {
+            setEditingOrderId(null);
+            setEditOrderData(null);
+          }}
           onDone={() => {
             setEditingOrderId(null);
+            setEditOrderData(null);
             fetchOrders();
           }}
         />
       )}
 
-      {selectedOrder && (
+      {detailOrderId && (
         <OrderDetail
-          id={selectedOrder}
-          onClose={() => setSelectedOrder(null)}
+          id={detailOrderId}
+          onClose={() => setDetailOrderId(null)}
         />
       )}
 
@@ -237,13 +275,13 @@ export default function OrdersPage() {
                     </td>
                     <td className="px-4 py-3">
                       <button
-                        onClick={() => setEditingOrderId(o.id)}
+                        onClick={() => handleEdit(o.id)}
                         className="mr-2 text-green-600 hover:text-green-800"
                       >
                         编辑
                       </button>
                       <button
-                        onClick={() => setSelectedOrder(o.id)}
+                        onClick={() => setDetailOrderId(o.id)}
                         className="mr-2 text-blue-600 hover:text-blue-800"
                       >
                         详情
@@ -310,13 +348,13 @@ export default function OrdersPage() {
                 </div>
                 <div className="mt-3 flex justify-end gap-3">
                   <button
-                    onClick={() => setEditingOrderId(o.id)}
+                    onClick={() => handleEdit(o.id)}
                     className="text-sm text-green-600 hover:text-green-800"
                   >
                     编辑
                   </button>
                   <button
-                    onClick={() => setSelectedOrder(o.id)}
+                    onClick={() => setDetailOrderId(o.id)}
                     className="text-sm text-blue-600 hover:text-blue-800"
                   >
                     详情
@@ -400,6 +438,9 @@ function NewOrderForm({
           totalPrice: item.total_price || "",
         })),
       );
+      setBuyerName(initialData.buyer_name || "");
+      setBuyerPhone(initialData.buyer_phone || "");
+      setNotes(initialData.notes || "");
       setIsPaid(initialData.settlement_status === "settled");
     }
   }, [isEdit, initialData]);
@@ -752,7 +793,8 @@ function OrderDetail({ id, onClose }: { id: number; onClose: () => void }) {
                   <tr key={item.id} className="border-t">
                     <td className="px-3 py-2">{item.product_name || "-"}</td>
                     <td className="px-3 py-2">
-                      {parseFloat(item.quantity).toFixed(0)}
+                      {parseFloat(item.quantity).toFixed(2)}
+                      {item.product_unit ? ` ${item.product_unit}` : ""}
                     </td>
                     <td className="px-3 py-2">
                       ¥{parseFloat(item.unit_price).toFixed(2)}

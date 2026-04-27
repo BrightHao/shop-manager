@@ -480,16 +480,22 @@ async function deleteProduct(id) {
 // Orders
 // ============================================================
 
-async function getOrders(page = 1, limit = 20) {
+async function getOrders(page = 1, limit = 20, paymentStatus) {
   const offset = (page - 1) * limit;
+  let whereClause = '';
+  if (paymentStatus === 'paid') {
+    whereClause = "WHERE settlement_status = 'settled'";
+  } else if (paymentStatus === 'unpaid') {
+    whereClause = "WHERE settlement_status != 'settled'";
+  }
   const [rows] = await pool.query(
     'SELECT id, order_no, buyer_name, buyer_phone, total_amount, settlement_status, settled_amount, notes, created_by, ' +
     'DATE_FORMAT(created_at, \'%Y-%m-%d %H:%i:%s\') as created_at, ' +
     'DATE_FORMAT(updated_at, \'%Y-%m-%d %H:%i:%s\') as updated_at ' +
-    'FROM orders ORDER BY created_at DESC LIMIT ? OFFSET ?',
+    `FROM orders ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
     [limit, offset]
   );
-  const [{ count }] = await pool.query('SELECT COUNT(*) as count FROM orders');
+  const [{ count }] = await pool.query(`SELECT COUNT(*) as count FROM orders ${whereClause}`);
   return { data: rows, total: count };
 }
 
@@ -502,7 +508,7 @@ async function getOrder(id) {
   const order = rows[0] || null;
   if (order) {
     const [items] = await pool.query(
-      'SELECT oi.*, p.name as product_name, p.sku as product_sku FROM order_items oi LEFT JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?',
+      'SELECT oi.*, p.name as product_name, p.sku as product_sku, p.unit as product_unit FROM order_items oi LEFT JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?',
       [id]
     );
     order.items = items;
@@ -772,7 +778,7 @@ exports.main = async (event, context) => {
 
       // Orders
       case 'orders.list':
-        result = await getOrders(data.page, data.limit);
+        result = await getOrders(data.page, data.limit, data.paymentStatus);
         break;
       case 'orders.get':
         result = await getOrder(data.id);
