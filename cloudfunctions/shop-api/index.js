@@ -597,6 +597,7 @@ async function getOrder(id) {
       'SELECT oi.*, p.name as product_name, p.sku as product_sku, p.unit as product_unit FROM order_items oi LEFT JOIN products p ON oi.product_id = p.id WHERE oi.order_id = ?',
       [id]
     );
+    order.fullItems = items;
     order.items = items;
   }
   return order;

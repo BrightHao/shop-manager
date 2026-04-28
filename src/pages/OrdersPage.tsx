@@ -246,7 +246,7 @@ export default function OrdersPage() {
 
       {editingOrderId && editOrderData && (
         <Modal
-          title="编辑订单"
+          title="修改订单"
           open
           onClose={() => {
             setEditingOrderId(null);
@@ -346,7 +346,7 @@ export default function OrdersPage() {
                           onClick={() => handleEdit(o.id)}
                           className="mr-2 text-green-600 hover:text-green-800"
                         >
-                          编辑
+                          修改
                         </button>
                         <button
                           onClick={() => setDetailOrderId(o.id)}
@@ -650,6 +650,13 @@ function NewOrderForm({
 
   return (
     <div>
+      {isEdit && (
+        <div className="mb-3 rounded bg-red-50 px-3 py-2">
+          <p className="text-sm text-red-600">
+            当前为修改订单，如需出库请新增订单
+          </p>
+        </div>
+      )}
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-semibold sm:text-lg">
           {isEdit ? "编辑订单" : "新增订单"}
