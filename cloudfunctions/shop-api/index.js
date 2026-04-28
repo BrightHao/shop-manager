@@ -684,36 +684,38 @@ async function updateOrder(id, { buyerName, buyerPhone, settlementStatus, settle
       const oldItemMap = new Map(oldItems.map(o => [String(o.product_id), parseFloat(o.quantity) || 0]));
       const newItemMap = new Map(items.filter(i => i.productId).map(i => [String(i.productId), parseFloat(i.quantity) || 0]));
 
-      // First pass: compute all stock changes and apply updates
-      for (const item of items) {
-        if (!item.productId) continue;
+      // Aggregate quantities per product to avoid processing same product multiple times
+      const allProductIds = new Set([...oldItemMap.keys(), ...newItemMap.keys()]);
 
-        const [stockRows] = await connection.query(
-          'SELECT stock_quantity FROM products WHERE id = ?',
-          [item.productId]
-        );
-        if (stockRows.length === 0) continue;
-
-        const newQty = newItemMap.get(String(item.productId)) || 0;
-        const oldQty = oldItemMap.get(String(item.productId)) || 0;
+      // Process each unique product once
+      for (const productId of allProductIds) {
+        const newQty = newItemMap.get(productId) || 0;
+        const oldQty = oldItemMap.get(productId) || 0;
         const diff = newQty - oldQty;
 
         if (diff === 0) continue;
 
+        const [stockRows] = await connection.query(
+          'SELECT stock_quantity FROM products WHERE id = ?',
+          [productId]
+        );
+        if (stockRows.length === 0) continue;
+
         const before = parseFloat(stockRows[0].stock_quantity) || 0;
-        const after = before + diff;
+        const stockChange = -diff;
+        const after = before + stockChange;
 
         // Update stock
         await connection.query(
           'UPDATE products SET stock_quantity = ?, updated_at = NOW() WHERE id = ?',
-          [after, item.productId]
+          [after, productId]
         );
 
         // Record inventory transaction
-        const txType = diff > 0 ? 'in' : 'out';
+        const txType = stockChange > 0 ? 'in' : 'out';
         await connection.query(
           'INSERT INTO inventory_transactions (product_id, transaction_type, quantity_change, quantity_before, quantity_after, reference_type, reference_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [item.productId, txType, diff, before, after, 'order', id, `订单 ${orderNo} 修改`]
+          [productId, txType, stockChange, before, after, 'order', id, `订单 ${orderNo} 修改`]
         );
       }
 
